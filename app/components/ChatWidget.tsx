@@ -54,9 +54,7 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Replace with your n8n webhook URL
-  const N8N_WEBHOOK_URL = process.env.NEXT_PUBLIC_N8N_URL 
-    ? `${process.env.NEXT_PUBLIC_N8N_URL}/webhook-test/chat` 
-    : 'http://localhost:5678/webhook-test/chat';
+  const N8N_WEBHOOK_URL = 'http://localhost:5678/webhook-test/chat';
 
   // Initialize session ID and settings from storage
   useEffect(() => {

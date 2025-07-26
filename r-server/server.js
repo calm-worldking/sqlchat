@@ -18,8 +18,6 @@ const accessLogStream = fs.createWriteStream(path.join(logDir, 'access.log'), { 
 // Инициализация приложения Express
 const app = express();
 const PORT = process.env.PORT || 3001;
-const HOST = process.env.HOST || '0.0.0.0';
-const SERVER_URL = process.env.SERVER_URL || `http://localhost:${PORT}`;
 
 // Настройка логирования
 app.use(morgan('combined', { stream: accessLogStream }));
@@ -348,12 +346,13 @@ if (!is.null(last_obj)) {
             const htmlContent = fs.readFileSync(htmlPath, 'utf8');
             const jsonContent = fs.readFileSync(jsonPath, 'utf8');
             
+            const serverUrl = `http://localhost:${PORT}`;
             result = {
               type: 'table',
-              htmlUrl: `${SERVER_URL}/${relativeHtmlPath}`,
-              jsonUrl: `${SERVER_URL}/${relativeJsonPath}`,
-              pdfUrl: `${SERVER_URL}/${relativePdfPath}`,
-              csvUrl: `${SERVER_URL}/${relativeCsvPath}`,
+              htmlUrl: `${serverUrl}/${relativeHtmlPath}`,
+              jsonUrl: `${serverUrl}/${relativeJsonPath}`,
+              pdfUrl: `${serverUrl}/${relativePdfPath}`,
+              csvUrl: `${serverUrl}/${relativeCsvPath}`,
               htmlContent: htmlContent,
               jsonData: JSON.parse(jsonContent)
             };
@@ -381,10 +380,11 @@ if (!is.null(last_obj)) {
           console.log(`[${requestId}] - PDF: ${pdfExists}`);
           
           if (outputExists) {
+            const serverUrl = `http://localhost:${PORT}`;
             result = {
               type: 'image',
-              imageUrl: `${SERVER_URL}/${relativeOutputPath}`,
-              pdfUrl: `${SERVER_URL}/${relativePdfPath}`
+              imageUrl: `${serverUrl}/${relativeOutputPath}`,
+              pdfUrl: `${serverUrl}/${relativePdfPath}`
             };
             
             console.log(`[${requestId}] Результат визуализации сформирован`);
@@ -402,10 +402,11 @@ if (!is.null(last_obj)) {
           // Если есть изображение, возвращаем его
           console.log(`[${requestId}] Найден файл изображения: ${outputPath}`);
           
+          const serverUrl = `http://localhost:${PORT}`;
           result = {
             type: 'image',
-            imageUrl: `${SERVER_URL}/${relativeOutputPath}`,
-            pdfUrl: `${SERVER_URL}/${relativePdfPath}`
+            imageUrl: `${serverUrl}/${relativeOutputPath}`,
+            pdfUrl: `${serverUrl}/${relativePdfPath}`
           };
         } else if (fs.existsSync(htmlPath) && fs.existsSync(jsonPath) && fs.existsSync(pdfPath) && fs.existsSync(csvPath)) {
           // Если есть HTML и JSON, возвращаем их
@@ -414,12 +415,13 @@ if (!is.null(last_obj)) {
           const htmlContent = fs.readFileSync(htmlPath, 'utf8');
           const jsonContent = fs.readFileSync(jsonPath, 'utf8');
           
+          const serverUrl = `http://localhost:${PORT}`;
           result = {
             type: 'table',
-            htmlUrl: `${SERVER_URL}/${relativeHtmlPath}`,
-            jsonUrl: `${SERVER_URL}/${relativeJsonPath}`,
-            pdfUrl: `${SERVER_URL}/${relativePdfPath}`,
-            csvUrl: `${SERVER_URL}/${relativeCsvPath}`,
+            htmlUrl: `${serverUrl}/${relativeHtmlPath}`,
+            jsonUrl: `${serverUrl}/${relativeJsonPath}`,
+            pdfUrl: `${serverUrl}/${relativePdfPath}`,
+            csvUrl: `${serverUrl}/${relativeCsvPath}`,
             htmlContent: htmlContent,
             jsonData: JSON.parse(jsonContent)
           };
@@ -473,9 +475,8 @@ if (!is.null(last_obj)) {
 });
 
 // Запуск сервера
-app.listen(PORT, HOST, () => {
+app.listen(PORT, () => {
   ensureDirectories();
-  console.log(`R Script Server running on http://${HOST}:${PORT}`);
-  console.log(`Server URL: ${SERVER_URL}`);
+  console.log(`R Script Server running on port ${PORT}`);
   console.log(`Serving static files from ${path.join(__dirname, 'public')}`);
 }); 

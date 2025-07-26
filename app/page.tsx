@@ -15,8 +15,7 @@ interface VisualizationData {
 
 export default function Home() {
   // URL вашего сервера для выполнения R-скриптов
-  const R_EXECUTION_SERVER = process.env.NEXT_PUBLIC_R_SERVER_URL || 'http://localhost:3001';
-  const R_EXECUTION_ENDPOINT = `${R_EXECUTION_SERVER}/execute-r`;
+  const R_EXECUTION_SERVER = 'http://localhost:3001/execute-r';
 
   // Интерфейс для результата таблицы
   interface TableResult {
@@ -66,7 +65,7 @@ export default function Home() {
       const textOutput = visualData?.textOutput || '';
       
       // Отправляем R-скрипт на сервер для выполнения
-      const response = await axios.post(R_EXECUTION_ENDPOINT, {
+      const response = await axios.post(R_EXECUTION_SERVER, {
         script: script,
         text: textOutput
       });
@@ -137,12 +136,12 @@ export default function Home() {
     // Создаем полный URL, если это относительный путь
     let fullUrl = url;
     if (url.startsWith('/')) {
-      const baseUrl = R_EXECUTION_SERVER;
+      const baseUrl = R_EXECUTION_SERVER.split('/').slice(0, 3).join('/');
       fullUrl = `${baseUrl}${url}`;
       console.log(`Преобразован относительный URL в абсолютный: ${fullUrl}`);
     } else if (!url.startsWith('data:') && !url.startsWith('http')) {
       // Если URL не начинается с data: или http, добавляем базовый URL
-      const baseUrl = R_EXECUTION_SERVER;
+      const baseUrl = R_EXECUTION_SERVER.split('/').slice(0, 3).join('/');
       fullUrl = `${baseUrl}/${url}`;
       console.log(`Добавлен базовый URL: ${fullUrl}`);
     }
