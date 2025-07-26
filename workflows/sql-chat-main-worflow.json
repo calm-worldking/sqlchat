@@ -1,0 +1,610 @@
+{
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "chat",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          -740,
+          560
+        ],
+        "id": "3e29f034-b47d-4b6d-bee3-a0b2208b296c",
+        "name": "Webhook",
+        "webhookId": "f305536a-f827-4c38-9b72-ace15bf3f3c1"
+      },
+      {
+        "parameters": {
+          "workflowId": {
+            "__rl": true,
+            "value": "5KUIfkHx5RgYKMHv",
+            "mode": "list",
+            "cachedResultName": "My workflow 5"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "natural_language_query": "={{ $json.body.message }}",
+              "sessionId": "={{ $json.body.sessionId }}",
+              "contextLength": "={{ $json.body.settings.contextLength }}"
+            },
+            "matchingColumns": [
+              "natural_language_query"
+            ],
+            "schema": [
+              {
+                "id": "natural_language_query",
+                "displayName": "natural_language_query",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string",
+                "removed": false
+              },
+              {
+                "id": "sessionId",
+                "displayName": "sessionId",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string",
+                "removed": false
+              },
+              {
+                "id": "contextLength",
+                "displayName": "contextLength",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "number",
+                "removed": false
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": true
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.2,
+        "position": [
+          -80,
+          640
+        ],
+        "id": "36593f2c-1bf2-4036-8a74-bb8715ce9583",
+        "name": "Execute Workflow"
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "mode": "list",
+            "value": "gpt-4.1-mini"
+          },
+          "options": {
+            "responseFormat": "json_object"
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.2,
+        "position": [
+          640,
+          480
+        ],
+        "id": "156d4ee4-85cc-454b-b33a-6f4c873ee79a",
+        "name": "OpenAI Chat Model1",
+        "credentials": {
+          "openAiApi": {
+            "id": "ObyB9R5Nq3BsLRBQ",
+            "name": "OpenAi account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "respondWith": "allIncomingItems",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.4,
+        "position": [
+          1640,
+          1060
+        ],
+        "id": "9814db14-3bea-4153-ba17-f500790580c0",
+        "name": "Respond to Webhook"
+      },
+      {
+        "parameters": {
+          "schemaType": "manual",
+          "inputSchema": "{\n\t\"type\": \"object\",\n\t\"properties\": {\n\t\t\"Full_response_report\": {\n\t\t\t\"type\": \"string\"\n\t\t}\n\t}\n}"
+        },
+        "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+        "typeVersion": 1.3,
+        "position": [
+          880,
+          480
+        ],
+        "id": "fb02f7a0-6cb1-43ee-9cea-40b22788bd30",
+        "name": "Structured Output Parser"
+      },
+      {
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "48383c24-e1cf-478d-9e8f-e2e30045df69",
+                "name": "body",
+                "value": "={{ $json.body }}",
+                "type": "object"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          -520,
+          560
+        ],
+        "id": "e6ad1fa5-de9f-4fd7-b357-35dec0e1fa60",
+        "name": "Params"
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "mode": "list",
+            "value": "gpt-4.1-mini"
+          },
+          "options": {
+            "responseFormat": "json_object"
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.2,
+        "position": [
+          280,
+          1140
+        ],
+        "id": "3b562658-45b3-4455-8de0-a2bcea6d3924",
+        "name": "OpenAI Chat Model",
+        "credentials": {
+          "openAiApi": {
+            "id": "ObyB9R5Nq3BsLRBQ",
+            "name": "OpenAi account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "inputText": "={{ $('Params').item.json.body.message }}",
+          "categories": {
+            "categories": [
+              {
+                "category": "Text",
+                "description": "Пользователь хочет текстовый отчёт"
+              },
+              {
+                "category": "Visual",
+                "description": "Пользователь хочет данные для построения графиков"
+              },
+              {
+                "category": "Table",
+                "description": "Пользователь хочет данные для построения таблц"
+              }
+            ]
+          },
+          "options": {
+            "multiClass": false
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.textClassifier",
+        "typeVersion": 1.1,
+        "position": [
+          280,
+          910
+        ],
+        "id": "e6d5ce55-73af-4550-a3e3-2edac2c1e40c",
+        "name": "Text Classifier"
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "=🔎 Запрос пользователя:\n{{ $('Params').item.json.body.message }}\n\n📊 Извлечённые данные из БД:\n{{ $('Execute Workflow').item.json.sqloutput }}\n\nСформируй подробный, но лаконичный отчёт, понятный человеку, на основе этих данных.\n\nОтвет строго в формате JSON.\n",
+          "hasOutputParser": true,
+          "options": {
+            "systemMessage": "Ты — эксперт по анализу данных и написанию отчётов.\n\nНа основе запроса пользователя и извлечённых данных из базы (`sqloutput`) ты формируешь краткий, логичный и человеко-понятный аналитический отчёт, строго следуя содержанию данных.\n\n---\n\n📌 ВХОДНЫЕ ДАННЫЕ:\n1. `Пользовательский вопрос` — формулирует, какую информацию хочет получить человек (например, \"Сколько было заказов за последний месяц?\" или \"Где больше всего пользователей?\").\n2. `sqloutput` — результат SQL-запроса в виде таблицы (массив объектов). Это единственный источник данных для анализа.\n\n---\n\n📌 ЦЕЛЬ:\nНа основе `sqloutput` и запроса:\n- Построить краткий аналитический вывод;\n- Объяснить данные, которые получены, максимально понятно для человека;\n- Ни в коем случае не придумывать факты, которых нет в sqloutput.\n\n---\n\n🛑 ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:\n\n1. ❗ Используй **только** факты и значения, присутствующие в `sqloutput`.\n2. ❗ Не делай обобщений, если данных недостаточно.\n3. ❗ Если данные пусты или недостаточны — дай аккуратный ответ об этом.\n4. ❗ Возвращай результат **строго в JSON-формате** следующего вида:\n\n```json\n{\n  \"Full_response_report\": \"...\"\n}\n5. ❌ Не добавляй никаких пояснений, markdown, комментариев или текстов вне JSON.\n\n6. ❌ Не пиши SQL-запросы и не указывай технические детали запроса — только итог анализа.\n\n7. Корректно отображай все данные, в названиях могут присутствовать числа"
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 2,
+        "position": [
+          680,
+          260
+        ],
+        "id": "66545a34-d697-4f64-850d-d599c7cfb6c9",
+        "name": "Text Agent"
+      },
+      {
+        "parameters": {
+          "sessionIdType": "customKey",
+          "sessionKey": "={{$('Params').item.json.body.sessionId}}",
+          "contextWindowLength": "={{ $('Params').item.json.body.settings.contextLength }}"
+        },
+        "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+        "typeVersion": 1.3,
+        "position": [
+          760,
+          480
+        ],
+        "id": "da0c6431-ed00-481e-a583-f297025b6c06",
+        "name": "Simple Memory"
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "mode": "list",
+            "value": "gpt-4.1-mini"
+          },
+          "options": {
+            "responseFormat": "json_object"
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.2,
+        "position": [
+          700,
+          880
+        ],
+        "id": "981a7fa1-c0d6-4917-8bd8-c0178260d1f6",
+        "name": "OpenAI Chat Model3",
+        "credentials": {
+          "openAiApi": {
+            "id": "ObyB9R5Nq3BsLRBQ",
+            "name": "OpenAi account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsonSchemaExample": "{\n \"r_script\": \"library(ggplot2)\\n\\ndata <- data.frame(\\n  city = c('Алматы', 'Астана', 'Шымкент'),\\n  count = c(58, 42, 28)\\n)\\n\\nggplot(data, aes(x = city, y = count, fill = city)) +\\n  geom_bar(stat = 'identity') +\\n  labs(title = 'Распределение клиентов по городам', x = 'Город', y = 'Количество') +\\n  theme_minimal()\"\n}\n"
+        },
+        "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+        "typeVersion": 1.3,
+        "position": [
+          820,
+          880
+        ],
+        "id": "65f1250f-e760-4f99-8d12-b3555c60f77e",
+        "name": "Structured Output Parser2"
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "=🔎 Запрос пользователя:\n{{ $('Params').item.json.body.message }}\n\n📊 Извлечённые данные из БД (каждый столбец в каждой строке разделён символом `|`):\n{{ $json.sqloutput }}\n\nСформулируй  R-script для отображения графиков с библиотекой ggplot2\n\nОтвет строго в формате JSON.\n",
+          "hasOutputParser": true,
+          "options": {
+            "systemMessage": "=# System Prompt: Визуализация графиком (ggplot2)\n\nТы — эксперт по анализу и визуализации данных с использованием языка R.\n\nНа основе запроса пользователя и извлечённых из базы данных данных (`sqloutput`) ты создаёшь:\n\n📌 R-скрипт на `ggplot2`, который визуализирует эти данные. График сохраняется в переменную `p`. Вверху графика должно быть заголовок с описанием.\n\n---\n\n## 📌 ВХОДНЫЕ ДАННЫЕ:\n- `Пользовательский запрос` — описывает, что именно хочет увидеть пользователь.\n- `sqloutput` — результат SQL-запроса в виде массива объектов.\n\n---\n\n## 📌 ЦЕЛЬ:\n- Проанализировать данные и визуально отобразить их в виде графика, соответствующего запросу.\n- Построить понятный и эстетичный график средствами `ggplot2`.\n\n---\n\n## 🛑 ЖЁСТКИЕ ПРАВИЛА:\n0. Всегда подключай `library(ggplot2)` в начале скрипта.\n1. ❗ Все векторы в `data.frame(...)` должны иметь одинаковую длину.\n2. ❗ Никогда не придумывай или сокращай данные (`/* ... */`, `...`, и т.д. — запрещены).\n3. ❗ Используй только точные данные из `sqloutput`.\n4. ❗ Сохраняй результат в переменную `p`.\n5. ❗ График должен иметь заголовок (`labs(title = ...)`) и подписи осей.\n6. ❗ Столбцы в таблице должны разделяться вертикально (если отображаются подписи).\n7. ❌ Не добавляй пояснений, markdown, комментариев или вывода вне JSON.\n8. На графиках должна быть понятная легенда и если нужны, то подписи у необходимых элементов\n9. ❗ Ответ должен быть строго в формате:\n```json\n{\n  \"r_script\": \"...\"\n}\n```\n\n---\n\n## 📈 Тип графика:\n- Категориальные данные → `geom_bar()`\n- Временные ряды → `geom_line()`\n- Проценты/доли → `geom_bar()` + `coord_polar()`\n- 2D-группировки → `geom_tile()`\n\n---\n\n## 📌 ЕСЛИ sqloutput ПУСТОЙ:\n```json\n{\n  \"r_script\": \"\"\n}\n```\n\n---\n\n## 📌 ПРИМЕР:\n```json\n{\n  \"r_script\": \"library(ggplot2)\\ndata <- data.frame(city = c('Алматы', 'Астана', 'Шымкент'), count = c(120, 85, 60))\\np <- ggplot(data, aes(x = city, y = count, fill = city)) + geom_bar(stat = 'identity') + labs(title = 'Клиенты по городам', x = 'Город', y = 'Количество') + theme_minimal()\"\n}\n```\n\n---\n\n🔚 Верни только строго валидный JSON с ключом `r_script`."
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 2,
+        "position": [
+          680,
+          660
+        ],
+        "id": "401b2128-95da-45b4-9c62-d448ab9757eb",
+        "name": "Text Agent1"
+      },
+      {
+        "parameters": {
+          "mode": "combine",
+          "combineBy": "combineByPosition",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.merge",
+        "typeVersion": 3.2,
+        "position": [
+          1250,
+          910
+        ],
+        "id": "00634185-58b7-461b-a13e-545237cce47c",
+        "name": "Merge"
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "mode": "list",
+            "value": "gpt-4.1-mini"
+          },
+          "options": {
+            "responseFormat": "json_object"
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.2,
+        "position": [
+          700,
+          1580
+        ],
+        "id": "9b2b0f44-8600-4007-9cb6-1e4671b2b9aa",
+        "name": "OpenAI Chat Model4",
+        "credentials": {
+          "openAiApi": {
+            "id": "ObyB9R5Nq3BsLRBQ",
+            "name": "OpenAi account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsonSchemaExample": "{\n \"r_script\": \"library(ggplot2)\\n\\ndata <- data.frame(\\n  city = c('Алматы', 'Астана', 'Шымкент'),\\n  count = c(58, 42, 28)\\n)\\n\\nggplot(data, aes(x = city, y = count, fill = city)) +\\n  geom_bar(stat = 'identity') +\\n  labs(title = 'Распределение клиентов по городам', x = 'Город', y = 'Количество') +\\n  theme_minimal()\"\n}\n"
+        },
+        "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+        "typeVersion": 1.3,
+        "position": [
+          820,
+          1580
+        ],
+        "id": "9a890c49-5886-4e9d-afb7-5c2931f5da1e",
+        "name": "Structured Output Parser3"
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "=🔎 Запрос пользователя:\n{{ $('Params').item.json.body.message }}\n\n📊 Извлечённые данные из БД (каждый столбец в каждой строке разделён символом `|`):\n{{ $json.sqloutput }}\n\nСформулируй  R-script для отображения таблиц с библиотекой gt\n\nОтвет строго в формате JSON.\n",
+          "hasOutputParser": true,
+          "options": {
+            "systemMessage": "=# System Prompt: Визуализация таблицей (gt)\n\nТы — эксперт по представлению данных в табличной форме с использованием языка R.\n\nНа основе запроса пользователя и данных (`sqloutput`) ты формируешь таблицу с помощью библиотеки `gt`, которая сохраняется в переменную `p`. Таблица должна иметь заголовок в верхней части.\n\n---\n\n## 📌 ВХОДНЫЕ ДАННЫЕ:\n- `Пользовательский запрос` — объясняет, какие данные должен увидеть пользователь.\n- `sqloutput` — результат SQL-запроса в виде массива объектов.\n\n---\n\n## 📌 ЦЕЛЬ:\n- Сформировать таблицу, соответствующую запросу, и красиво отобразить её с помощью `gt`.\n\n---\n\n## 🛑 ЖЁСТКИЕ ПРАВИЛА:\n0. Всегда подключай `library(gt)` в начале скрипта.\n1. ❗ Все столбцы `data.frame(...)` должны иметь одинаковую длину.\n2. ❗ Используй только данные из `sqloutput`. Не выдумывай значения.\n3. ❗ Таблица сохраняется в переменную `p`.\n4. ❗ Заголовок таблицы указывается через `tab_header()`.\n5. ❗ Столбцы могут содержать числа, названия — отображаются корректно.\n6. ❗ Таблица должна быть визуально читаемой.\n7. ❗ Ответ должен быть строго в формате:\n```json\n{\n  \"r_script\": \"...\"\n}\n```\n8. ❌ Не добавляй пояснений, markdown, комментариев или форматирования вне JSON.\n\n---\n\n## 📌 ЕСЛИ sqloutput ПУСТОЙ:\n```json\n{\n  \"r_script\": \"\"\n}\n```\n\n---\n\n## 📌 ПРИМЕР:\n```json\n{\n  \"r_script\": \"library(gt)\\ndata <- data.frame(city = c('Алматы', 'Астана', 'Шымкент'), count = c(120, 85, 60))\\np <- gt(data) |> tab_header(title = 'Клиенты по городам')\"\n}\n```\n\n---\n\n🔚 Верни только строго валидный JSON с ключом `r_script`."
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 2,
+        "position": [
+          680,
+          1360
+        ],
+        "id": "b1622749-3cdf-4e1c-8df4-7331a8330449",
+        "name": "Text Agent2"
+      },
+      {
+        "parameters": {
+          "mode": "raw",
+          "jsonOutput": "{\n\"output\": \n{\n\"r_script\": \"\"\n}\n}",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          750,
+          1060
+        ],
+        "id": "948896af-2b5f-4de2-a422-68d215098d71",
+        "name": "Edit Fields"
+      }
+    ],
+    "connections": {
+      "Webhook": {
+        "main": [
+          [
+            {
+              "node": "Params",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow": {
+        "main": [
+          [
+            {
+              "node": "Text Agent",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Text Classifier",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model1": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "Text Agent",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Structured Output Parser": {
+        "ai_outputParser": [
+          [
+            {
+              "node": "Text Agent",
+              "type": "ai_outputParser",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Params": {
+        "main": [
+          [
+            {
+              "node": "Execute Workflow",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "Text Classifier",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Text Classifier": {
+        "main": [
+          [
+            {
+              "node": "Edit Fields",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Text Agent1",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Text Agent2",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Text Agent": {
+        "main": [
+          [
+            {
+              "node": "Merge",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Simple Memory": {
+        "ai_memory": [
+          [
+            {
+              "node": "Text Agent",
+              "type": "ai_memory",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model3": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "Text Agent1",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Structured Output Parser2": {
+        "ai_outputParser": [
+          [
+            {
+              "node": "Text Agent1",
+              "type": "ai_outputParser",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Text Agent1": {
+        "main": [
+          [
+            {
+              "node": "Merge",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Merge": {
+        "main": [
+          [
+            {
+              "node": "Respond to Webhook",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model4": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "Text Agent2",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Structured Output Parser3": {
+        "ai_outputParser": [
+          [
+            {
+              "node": "Text Agent2",
+              "type": "ai_outputParser",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Text Agent2": {
+        "main": [
+          [
+            {
+              "node": "Merge",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      },
+      "Edit Fields": {
+        "main": [
+          [
+            {
+              "node": "Merge",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      }
+    },
+    "pinData": {},
+    "meta": {
+      "templateCredsSetupCompleted": true,
+      "instanceId": "229fcadd5d04276eaa7a3f397f6571c4439bac96b912fb0774d4e4f872a9b68c"
+    }
+  }

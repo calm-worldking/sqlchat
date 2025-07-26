@@ -1,0 +1,241 @@
+{
+  "name": "SQL Chat with PostgreSQL and OpenAI",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "webhook-test/chat",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a4c8a9e3-c9c7-4c0e-a7a4-e6b2c8c8b8c8",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialName": "OpenAI API",
+        "operation": "completion",
+        "model": "gpt-3.5-turbo-instruct",
+        "prompt": "=You are a SQL assistant that helps users query a PostgreSQL database. The database has the following tables in the 'sqlchat' schema:\n\n1. users(id, username, email, created_at)\n2. sessions(id, user_id, session_id, created_at, last_activity)\n3. messages(id, session_id, message_text, sender, created_at)\n4. products(id, name, description, price, category, in_stock, created_at)\n5. orders(id, user_id, total_amount, status, created_at)\n6. order_items(id, order_id, product_id, quantity, price)\n\nThe user's message is: {{$json[\"message\"]}}\n\nIf the message is asking for a SQL query, generate a PostgreSQL SQL query that would answer the user's question. Make sure to use the correct schema name 'sqlchat' in your query.\n\nIf the message is not asking for a SQL query, respond with a helpful message about what kind of SQL queries the user can ask.\n\nYour response should be in the following format:\n\n```\n{\"query\": \"SQL QUERY HERE\", \"explanation\": \"BRIEF EXPLANATION OF THE QUERY\"}\n```\n\nOr if no SQL query is needed:\n\n```\n{\"response\": \"YOUR RESPONSE HERE\"}\n```",
+        "options": {}
+      },
+      "id": "b5d9b0f4-d0d8-5d1f-b8b5-f7c3d9d9c9d9",
+      "name": "OpenAI",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        470,
+        300
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "1",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse OpenAI response\nlet openAiResponse = $input.item.json.text;\n\ntry {\n  // Extract JSON from the response\n  const jsonMatch = openAiResponse.match(/```\\s*\\n({[\\s\\S]*?})\\s*\\n```/);\n  \n  if (jsonMatch && jsonMatch[1]) {\n    const parsedResponse = JSON.parse(jsonMatch[1]);\n    \n    // Check if we have a SQL query\n    if (parsedResponse.query) {\n      return {\n        json: {\n          query: parsedResponse.query,\n          explanation: parsedResponse.explanation,\n          type: 'sql_query'\n        }\n      };\n    } else if (parsedResponse.response) {\n      // If it's just a response without a query\n      return {\n        json: {\n          text: parsedResponse.response,\n          type: 'text'\n        }\n      };\n    }\n  }\n  \n  // Fallback if no JSON found\n  return {\n    json: {\n      text: openAiResponse,\n      type: 'text'\n    }\n  };\n} catch (error) {\n  // If parsing fails, return the raw text\n  return {\n    json: {\n      text: openAiResponse,\n      type: 'text'\n    }\n  };\n}"
+      },
+      "id": "c6e0c1f5-e1e9-6e2g-c9c6-g8d4e0e0d0e0",
+      "name": "Parse OpenAI Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"type\"]}}",
+              "operation": "equals",
+              "value2": "sql_query"
+            }
+          ]
+        }
+      },
+      "id": "d7f1d2g6-f2f0-7f3h-d0d7-h9e5f1f1e1f1",
+      "name": "IF",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        910,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{$json[\"query\"]}}",
+        "additionalFields": {}
+      },
+      "id": "e8f2e3g7-g3g1-8g4i-e1e8-i0f6g2g2f2g2",
+      "name": "PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1130,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "2",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process PostgreSQL results\nconst results = $input.item.json;\nconst explanation = $('Parse OpenAI Response').item.json.explanation;\n\n// Check if we have results\nif (Array.isArray(results) && results.length > 0) {\n  // Convert results to R script for visualization\n  const firstRow = results[0];\n  const columns = Object.keys(firstRow);\n  \n  // Create R script for table visualization\n  const rScript = `\n# Create data frame from query results\ndf <- data.frame(\n  ${columns.map(col => `${col} = c(${results.map(row => {\n    const val = row[col];\n    if (val === null || val === undefined) return 'NA';\n    if (typeof val === 'string') return `\"${val.replace(/\"/g, '\\\\\"')}\"`;\n    return val;\n  }).join(', ')})`).join(',\\n  ')}\n)\n\n# Create a formatted table using gt\ngt_table <- gt::gt(df) %>%\n  gt::tab_header(\n    title = \"SQL Query Results\",\n    subtitle = \"${explanation.replace(/\"/g, '\\\\\"')}\"\n  ) %>%\n  gt::tab_style(\n    style = list(gt::cell_fill(color = \"#f0f9ff\")),\n    locations = list(gt::cells_column_labels())\n  )\n`;\n\n  return {\n    json: {\n      output: {\n        Full_response_report: `SQL query executed successfully. Found ${results.length} results.`,\n        response_type: 'r_script',\n        r_script: rScript\n      }\n    }\n  };\n} else {\n  return {\n    json: {\n      output: {\n        Full_response_report: \"The SQL query executed successfully but returned no results.\",\n        response_type: 'text'\n      }\n    }\n  };\n}"
+      },
+      "id": "f9g3f4h8-h4h2-9h5j-f2f9-j1g7h3h3g3h3",
+      "name": "Process SQL Results",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Process text response\nconst text = $input.item.json.text;\n\nreturn {\n  json: {\n    output: {\n      Full_response_report: text,\n      response_type: 'text'\n    }\n  }\n};"
+      },
+      "id": "g0h4g5i9-i5i3-0i6k-g3g0-k2h8i4i4h4i4",
+      "name": "Process Text Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1130,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "h1i5h6j0-j6j4-1j7l-h4h1-l3i9j5j5i5j5",
+      "name": "Respond To Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1570,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Parse OpenAI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse OpenAI Response": {
+      "main": [
+        [
+          {
+            "node": "IF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Process Text Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Process SQL Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process SQL Results": {
+      "main": [
+        [
+          {
+            "node": "Respond To Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Text Response": {
+      "main": [
+        [
+          {
+            "node": "Respond To Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "2a3b4c5d-6e7f-8g9h-0i1j-2k3l4m5n6o7p",
+  "id": "2",
+  "meta": {
+    "instanceId": "example-instance"
+  },
+  "tags": [
+    {
+      "id": 2,
+      "name": "sql",
+      "createdAt": "2023-01-01T00:00:00.000Z",
+      "updatedAt": "2023-01-01T00:00:00.000Z"
+    }
+  ]
+} 

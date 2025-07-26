@@ -1,0 +1,8 @@
+node_modules
+logs
+public/outputs
+public/tables
+.git
+.gitignore
+Dockerfile
+README.md 
