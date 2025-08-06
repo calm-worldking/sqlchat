@@ -1,0 +1,110 @@
+[
+  {
+    "location": "Актау",
+    "gyms_count": 1
+  },
+  {
+    "location": "Актау",
+    "gyms_count": 343
+  },
+  {
+    "location": "Актобе",
+    "gyms_count": 341
+  },
+  {
+    "location": "Алматы",
+    "gyms_count": 349
+  },
+  {
+    "location": "Алматы",
+    "gyms_count": 4
+  },
+  {
+    "location": "Астана",
+    "gyms_count": 1
+  },
+  {
+    "location": "Астана",
+    "gyms_count": 330
+  },
+  {
+    "location": "Атырау",
+    "gyms_count": 318
+  },
+  {
+    "location": "Караганда",
+    "gyms_count": 4
+  },
+  {
+    "location": "Караганда",
+    "gyms_count": 340
+  },
+  {
+    "location": "Костанай",
+    "gyms_count": 343
+  },
+  {
+    "location": "Костанай",
+    "gyms_count": 1
+  },
+  {
+    "location": "Кызылорда",
+    "gyms_count": 1
+  },
+  {
+    "location": "Кызылорда",
+    "gyms_count": 339
+  },
+  {
+    "location": "Павлодар",
+    "gyms_count": 326
+  },
+  {
+    "location": "Семей",
+    "gyms_count": 5
+  },
+  {
+    "location": "Семей",
+    "gyms_count": 328
+  },
+  {
+    "location": "Талдыкорган",
+    "gyms_count": 1
+  },
+  {
+    "location": "Талдыкорган",
+    "gyms_count": 296
+  },
+  {
+    "location": "Тараз",
+    "gyms_count": 337
+  },
+  {
+    "location": "Тараз",
+    "gyms_count": 5
+  },
+  {
+    "location": "Усть-Каменогорск",
+    "gyms_count": 1
+  },
+  {
+    "location": "Усть-Каменогорск",
+    "gyms_count": 332
+  },
+  {
+    "location": "Шымкент",
+    "gyms_count": 358
+  },
+  {
+    "location": "Шымкент",
+    "gyms_count": 3
+  },
+  {
+    "location": "Экибастуз",
+    "gyms_count": 320
+  },
+  {
+    "location": "Экибастуз",
+    "gyms_count": 3
+  }
+]

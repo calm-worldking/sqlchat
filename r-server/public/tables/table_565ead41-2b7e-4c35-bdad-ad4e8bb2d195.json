@@ -1,0 +1,22 @@
+[
+  {
+    "city": "Тараз",
+    "active_residents": 583
+  },
+  {
+    "city": "Семей",
+    "active_residents": 561
+  },
+  {
+    "city": "Алматы",
+    "active_residents": 478
+  },
+  {
+    "city": "Караганда",
+    "active_residents": 458
+  },
+  {
+    "city": "Шымкент",
+    "active_residents": 361
+  }
+]

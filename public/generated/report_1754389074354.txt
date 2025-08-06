@@ -1,0 +1,9 @@
+Отчёт
+
+Отчёт по Алматы не может быть сформирован из-за технической ошибки: столбец "location" не существует в исходных данных. Для корректной генерации отчёта необходимо наличие данных по местоположению. Рекомендуется проверить структуру и содержание исходной базы данных, а также корректность запроса к данным. После устранения ошибки можно повторить запрос для получения полного отчёта по Алматы.
+
+SQL: (SELECT name, industry, location FROM companies WHERE location ILIKE '%Алматы%')
+UNION ALL
+(SELECT name, phone AS industry, location FROM users WHERE location ILIKE '%Алматы%')
+UNION ALL
+(SELECT name, opened_at::text AS industry, location FROM gyms WHERE location ILIKE '%Алматы%');

@@ -124,7 +124,7 @@
       {
         "parameters": {
           "schemaType": "manual",
-          "inputSchema": "{\n\t\"type\": \"object\",\n\t\"properties\": {\n\t\t\"Full_response_report\": {\n\t\t\t\"type\": \"string\"\n\t\t}\n\t}\n}"
+          "inputSchema": "{\n\t\"type\": \"object\",\n\t\"properties\": {\n\t\t\"response\": {\n\t\t\t\"type\": \"string\"\n\t\t},\n\t\t\"sql_query\": {\n\t\t\t\"type\": \"string\"\n\t\t}\n\t}\n}"
         },
         "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
         "typeVersion": 1.3,
@@ -381,7 +381,7 @@
       {
         "parameters": {
           "mode": "raw",
-          "jsonOutput": "{\n\"output\": \n{\n\"r_script\": \"\"\n}\n}",
+          "jsonOutput": "{\n\"r_script\": \"\"\n}",
           "options": {}
         },
         "type": "n8n-nodes-base.set",

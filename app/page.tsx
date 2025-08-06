@@ -31,6 +31,7 @@ export default function Home() {
   const [resultTable, setResultTable] = useState<TableResult | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
   // Effect to execute R script when it's received
   useEffect(() => {
@@ -38,6 +39,23 @@ export default function Home() {
       executeRScript(visualData.rScript);
     }
   }, [visualData]);
+
+  // Effect to check server status on mount
+  useEffect(() => {
+    const checkServerStatus = async () => {
+      try {
+        setServerStatus('checking');
+        await axios.get(`${R_EXECUTION_SERVER.split('/execute-r')[0]}/health`, {
+          timeout: 5000
+        });
+        setServerStatus('online');
+      } catch (error) {
+        setServerStatus('offline');
+      }
+    };
+
+    checkServerStatus();
+  }, []);
 
   // Function to handle receiving visualization data from ChatWidget
   const handleVisualizationDataReceived = (data: any) => {
@@ -64,10 +82,12 @@ export default function Home() {
       // Получаем текстовый вывод, если он есть
       const textOutput = visualData?.textOutput || '';
       
-      // Отправляем R-скрипт на сервер для выполнения
+      // Отправляем R-скрипт на сервер для выполнения с таймаутом
       const response = await axios.post(R_EXECUTION_SERVER, {
         script: script,
         text: textOutput
+      }, {
+        timeout: 30000 // 30 секунд таймаут
       });
       
       console.log("Server response:", response.data);
@@ -116,9 +136,33 @@ export default function Home() {
       } else {
         setError('Не удалось получить результат выполнения скрипта');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error executing R script:', err);
-      setError('Произошла ошибка при выполнении R-скрипта');
+      
+      let errorMessage = 'Произошла ошибка при выполнении R-скрипта';
+      
+      // Более детальная обработка ошибок
+      if (err.code === 'ECONNREFUSED') {
+        errorMessage = 'Сервер R недоступен. Убедитесь, что сервер запущен на порту 3001.';
+      } else if (err.code === 'ENOTFOUND') {
+        errorMessage = 'Не удается подключиться к серверу R. Проверьте настройки подключения.';
+      } else if (err.response) {
+        // Ошибка от сервера
+        const status = err.response.status;
+        if (status === 500) {
+          errorMessage = 'Внутренняя ошибка сервера R. Проверьте логи сервера.';
+        } else if (status === 404) {
+          errorMessage = 'Эндпоинт R-сервера не найден. Проверьте конфигурацию.';
+        } else {
+          errorMessage = `Ошибка сервера: ${status} - ${err.response.data?.message || 'Неизвестная ошибка'}`;
+        }
+      } else if (err.code === 'ECONNABORTED') {
+        errorMessage = 'Превышено время ожидания ответа от сервера R. Попробуйте еще раз.';
+      } else if (err.message) {
+        errorMessage = `Ошибка подключения: ${err.message}`;
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsExecuting(false);
     }
@@ -206,6 +250,10 @@ export default function Home() {
                     <div className="flex flex-col items-center justify-center flex-grow">
                       <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
                       <p className="mt-4 text-gray-600">Выполняется построение графика...</p>
+                      <div className="mt-4 text-sm text-gray-500 text-center max-w-md">
+                        <p>Это может занять несколько секунд</p>
+                        <p className="mt-1">Сервер R обрабатывает ваш запрос</p>
+                      </div>
                     </div>
                   ) : resultImage ? (
                     <div className="flex flex-col items-center justify-center flex-grow overflow-auto">
@@ -356,13 +404,64 @@ export default function Home() {
                     </div>
                   ) : error ? (
                     <div className="flex flex-col items-center justify-center flex-grow">
-                      <p className="text-red-500">{error}</p>
-                      <button 
-                        onClick={() => visualData.rScript && executeRScript(visualData.rScript)}
-                        className="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600"
-                      >
-                        Попробовать снова
-                      </button>
+                      <div className="text-center">
+                        <div className="mb-4">
+                          <svg className="mx-auto h-12 w-12 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                          </svg>
+                        </div>
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">Произошла ошибка при выполнении R-скрипта</h3>
+                        <p className="text-red-500 mb-4">{error}</p>
+                        <div className="text-sm text-gray-600 mb-6">
+                          <div className="flex items-center justify-center mb-3">
+                            <span className="mr-2">Статус сервера R:</span>
+                            {serverStatus === 'online' && (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                <span className="w-2 h-2 bg-green-400 rounded-full mr-1"></span>
+                                Онлайн
+                              </span>
+                            )}
+                            {serverStatus === 'offline' && (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                <span className="w-2 h-2 bg-red-400 rounded-full mr-1"></span>
+                                Офлайн
+                              </span>
+                            )}
+                            {serverStatus === 'checking' && (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                <div className="w-2 h-2 bg-yellow-400 rounded-full mr-1 animate-pulse"></div>
+                                Проверка...
+                              </span>
+                            )}
+                          </div>
+                          <p>Возможные причины:</p>
+                          <ul className="list-disc list-inside mt-2 space-y-1">
+                            <li>Сервер R временно недоступен</li>
+                            <li>Ошибка в синтаксисе R-скрипта</li>
+                            <li>Отсутствуют необходимые библиотеки</li>
+                            <li>Проблемы с данными</li>
+                          </ul>
+                        </div>
+                        <div className="flex space-x-3">
+                          <button 
+                            onClick={() => visualData.rScript && executeRScript(visualData.rScript)}
+                            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                          >
+                            Попробовать снова
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setServerStatus('checking');
+                              axios.get(`${R_EXECUTION_SERVER.split('/execute-r')[0]}/health`, {
+                                timeout: 5000
+                              }).then(() => setServerStatus('online')).catch(() => setServerStatus('offline'));
+                            }}
+                            className="px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                          >
+                            Проверить сервер
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center flex-grow">
@@ -373,27 +472,18 @@ export default function Home() {
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-full">
-            <h1 className="text-4xl font-bold mb-6 text-primary">SQL Chat</h1>
-            <div className="mb-8">
-              <div className="w-64 h-64 mx-auto relative">
-                <div className="absolute inset-0 bg-blue-500 rounded-full opacity-20 animate-pulse"></div>
-                <div className="absolute inset-4 bg-green-500 rounded-full opacity-20 animate-pulse delay-300"></div>
-                <div className="absolute inset-8 bg-yellow-500 rounded-full opacity-20 animate-pulse delay-500"></div>
-                <div className="absolute inset-12 bg-red-500 rounded-full opacity-20 animate-pulse delay-700"></div>
-                <div className="absolute inset-16 bg-purple-500 rounded-full opacity-20 animate-pulse delay-1000"></div>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-2xl font-bold">SQL</span>
+                <h1 className="text-4xl font-bold mb-6 text-primary">SQL Chat</h1>
+                <div className="mb-8">
+                  <div className="w-96 h-96 mx-auto relative">
+                    <img 
+                      src="/sql-spider-logo.png" 
+                      alt="SQL Chat Logo" 
+                      className="w-full h-full object-contain drop-shadow-2xl"
+                    />
+                  </div>
                 </div>
-              </div>
-            </div>
-            <p className="text-xl mb-4">
-              Welcome to SQL Chat! Ask your questions in the chat widget.
-            </p>
-            <p className="text-gray-600">
-              Our AI assistant is powered by n8n workflow integration.
-            </p>
-                <p className="text-gray-600 mt-4">
-                  Запросите текстовый отчет или визуализацию данных в чате справа.
+                <p className="text-xl mb-4 text-center">
+                  Добро пожаловать в SQL Chat! Задавайте вопросы в чате справа.
                 </p>
               </div>
             )}

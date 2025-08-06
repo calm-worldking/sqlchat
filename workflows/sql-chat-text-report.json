@@ -1,0 +1,492 @@
+{
+    "nodes": [
+      {
+        "parameters": {},
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          0,
+          0
+        ],
+        "id": "f5205266-922c-416b-95e1-a684870759fe",
+        "name": "When clicking ‘Execute workflow’"
+      },
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "chat",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          -20,
+          160
+        ],
+        "id": "3fd02fc9-4719-47f4-bdf8-99c9500a4b9a",
+        "name": "Webhook",
+        "webhookId": "b790b5a3-3c91-4299-a530-b8edcff4d7e5"
+      },
+      {
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "b2356ea7-0009-4935-8d4f-07564b368ba1",
+                "name": "request",
+                "value": "={{ $('Webhook').isExecuted ? $json.body.message : ( $('When Executed by Another Workflow').isExecuted ? $json.message : \"Сколько людей занимаются в Алматы\")}}",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          220,
+          150
+        ],
+        "id": "044d5768-21b8-48c5-aeb9-9782f624ee5e",
+        "name": "Edit Fields"
+      },
+      {
+        "parameters": {
+          "text": "=запрос: {{ $json.request }}\nрезультат извлечения выдай в json формате",
+          "schemaType": "manual",
+          "inputSchema": "{\n    \"tasks\": {\n        \"type\": \"array\",\n        \"item\": {\n            \"type\": \"string\"\n        }\n    }\n}\n",
+          "options": {
+            "systemPromptTemplate": "=You are an expert extraction algorithm.\nИзвлеки список задач в json формате, которые нужно выполнить для полного ответа по запросу пользователя.\nБольшинство задач будут представлять собой получение sql запроса к базе данных для получения необходимых данных. Не упоминай в задачах json формат и всё связанное с ним. Если в вопросе есть запрос на построение графиков или таблиц, пропускай эти пункты\n\nВывод в формате:\n\n\"tasks\": \n  \"task\":\n  \"task\":"
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+        "typeVersion": 1.2,
+        "position": [
+          440,
+          150
+        ],
+        "id": "b77dbdeb-2276-44e7-9aea-80e6af72713d",
+        "name": "Information Extractor"
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "mode": "list",
+            "value": "gpt-4.1-mini"
+          },
+          "options": {
+            "responseFormat": "json_object"
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.2,
+        "position": [
+          520,
+          370
+        ],
+        "id": "f7be73af-4b13-4380-a558-19899ecb2b54",
+        "name": "OpenAI Chat Model",
+        "credentials": {
+          "openAiApi": {
+            "id": "ObyB9R5Nq3BsLRBQ",
+            "name": "OpenAi account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "fieldToSplitOut": "output.tasks",
+          "options": {
+            "destinationFieldName": "task"
+          }
+        },
+        "type": "n8n-nodes-base.splitOut",
+        "typeVersion": 1,
+        "position": [
+          800,
+          150
+        ],
+        "id": "31d82008-acc8-43dd-84b8-d845502ca322",
+        "name": "Split Out"
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "type": "n8n-nodes-base.splitInBatches",
+        "typeVersion": 3,
+        "position": [
+          1020,
+          150
+        ],
+        "id": "5d63c364-2289-47e7-8822-5af4e5624079",
+        "name": "Loop Over Items"
+      },
+      {
+        "parameters": {
+          "workflowId": {
+            "__rl": true,
+            "value": "5KUIfkHx5RgYKMHv",
+            "mode": "list",
+            "cachedResultName": "My workflow 5"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "contextLength": 0,
+              "natural_language_query": "={{ $json.task }}",
+              "sessionId": "={{$('Webhook').isExecuted ? $('Webhook').item.json.body.session_id : ( $('When Executed by Another Workflow').isExecuted ? $('When Executed by Another Workflow').json.sessionId : '1')}}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "natural_language_query",
+                "displayName": "natural_language_query",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "sessionId",
+                "displayName": "sessionId",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "contextLength",
+                "displayName": "contextLength",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "number"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": true
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.2,
+        "position": [
+          1240,
+          200
+        ],
+        "id": "f0a6402d-abf5-48f9-a93c-b8c2cac1181c",
+        "name": "Execute Workflow"
+      },
+      {
+        "parameters": {
+          "aggregate": "aggregateAllItemData",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.aggregate",
+        "typeVersion": 1,
+        "position": [
+          1240,
+          0
+        ],
+        "id": "ca14b66a-4f37-4b04-ad99-28edc46965b3",
+        "name": "Aggregate"
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "=Вопрос пользователя:  {{ $('Edit Fields').item.json.request }}\nВЫходные данные: \"{{($json.data).map(item => item.sqloutput).join(', ')}}\"\nрезультат выводить в формате json",
+          "hasOutputParser": true,
+          "options": {
+            "systemMessage": "Ты эксперт по составлению подробных отчётов. По запросу пользователя и выходным данным (которые пользователь не видит) нужно составить полный отчёт, чтобы полностью ответить на запрос пользователя, используя все имеющиеся данные.\n\nрезультат выводить в формате json"
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 2,
+        "position": [
+          1460,
+          0
+        ],
+        "id": "00eb15bd-0fcc-4658-9cfa-44a0e3a7f376",
+        "name": "AI Agent"
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "mode": "list",
+            "value": "gpt-4.1-mini"
+          },
+          "options": {
+            "responseFormat": "json_object"
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.2,
+        "position": [
+          1540,
+          220
+        ],
+        "id": "6a7d211a-67ac-469e-a863-355511488e0c",
+        "name": "OpenAI Chat Model1",
+        "credentials": {
+          "openAiApi": {
+            "id": "ObyB9R5Nq3BsLRBQ",
+            "name": "OpenAi account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "respondWith": "allIncomingItems",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.4,
+        "position": [
+          2220,
+          0
+        ],
+        "id": "7144d5ee-15e1-45a6-a03e-c0fc7b5b8936",
+        "name": "Respond to Webhook"
+      },
+      {
+        "parameters": {
+          "schemaType": "manual",
+          "inputSchema": "{\n\t\"type\": \"object\",\n\t\"properties\": {\n\t\t\"Full_response_report\": {\n\t\t\t\"type\": \"string\"\n\t\t}\n\t}\n}"
+        },
+        "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+        "typeVersion": 1.3,
+        "position": [
+          1720,
+          220
+        ],
+        "id": "3e2ad97d-6a3c-4790-9c5b-5a473e4f70f2",
+        "name": "Structured Output Parser"
+      },
+      {
+        "parameters": {
+          "workflowInputs": {
+            "values": [
+              {
+                "name": "message"
+              },
+              {
+                "name": "sessionId"
+              }
+            ]
+          }
+        },
+        "type": "n8n-nodes-base.executeWorkflowTrigger",
+        "typeVersion": 1.1,
+        "position": [
+          0,
+          300
+        ],
+        "id": "758c9c2f-6ff2-4a83-be90-9c4f28587b21",
+        "name": "When Executed by Another Workflow"
+      },
+      {
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "23cccee9-2fdc-4353-9c85-ae900e26b548",
+                "name": "response",
+                "value": "={{ $json.output.Full_response_report }}",
+                "type": "string"
+              },
+              {
+                "id": "2cb3b8a4-d360-4d7e-ae6f-591e06e6b8e2",
+                "name": "sql_query",
+                "value": "={{ $('Aggregate').item.json.data[0].query }}",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          1820,
+          0
+        ],
+        "id": "da229918-af71-48fa-8b4d-97391b84d6f9",
+        "name": "Edit Fields1"
+      }
+    ],
+    "connections": {
+      "When clicking ‘Execute workflow’": {
+        "main": [
+          [
+            {
+              "node": "Edit Fields",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Webhook": {
+        "main": [
+          [
+            {
+              "node": "Edit Fields",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Edit Fields": {
+        "main": [
+          [
+            {
+              "node": "Information Extractor",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Information Extractor": {
+        "main": [
+          [
+            {
+              "node": "Split Out",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "Information Extractor",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Split Out": {
+        "main": [
+          [
+            {
+              "node": "Loop Over Items",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Loop Over Items": {
+        "main": [
+          [
+            {
+              "node": "Aggregate",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Execute Workflow",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Workflow": {
+        "main": [
+          [
+            {
+              "node": "Loop Over Items",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Aggregate": {
+        "main": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Agent": {
+        "main": [
+          [
+            {
+              "node": "Edit Fields1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model1": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Structured Output Parser": {
+        "ai_outputParser": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_outputParser",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "When Executed by Another Workflow": {
+        "main": [
+          [
+            {
+              "node": "Edit Fields",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Edit Fields1": {
+        "main": [
+          [
+            {
+              "node": "Respond to Webhook",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "pinData": {},
+    "meta": {
+      "templateCredsSetupCompleted": true,
+      "instanceId": "229fcadd5d04276eaa7a3f397f6571c4439bac96b912fb0774d4e4f872a9b68c"
+    }
+  }

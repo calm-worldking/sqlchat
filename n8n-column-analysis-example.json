@@ -1,0 +1,101 @@
+    {
+    "name": "Column Analysis Webhook",
+    "nodes": [
+        {
+        "parameters": {
+            "httpMethod": "POST",
+            "path": "column-analysis",
+            "responseMode": "responseNode",
+            "options": {}
+        },
+        "id": "webhook-column-analysis",
+        "name": "Webhook Column Analysis",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 1,
+        "position": [240, 300],
+        "webhookId": "column-analysis"
+        },
+        {
+        "parameters": {
+            "operation": "executeQuery",
+            "query": "SELECT \n  t.table_name,\n  c.column_name,\n  c.data_type,\n  c.is_nullable,\n  c.column_default,\n  c.character_maximum_length,\n  CASE WHEN cc.column_name IS NULL THEN true ELSE false END as empty_description\nFROM information_schema.tables t\nJOIN information_schema.columns c ON t.table_name = c.table_name\nLEFT JOIN information_schema.column_comments cc ON \n  t.table_name = cc.table_name AND \n  c.column_name = cc.column_name\nWHERE t.table_schema = 'public'\n  AND c.column_name NOT LIKE '%id'\n  AND c.column_name NOT LIKE '%_id'\nORDER BY t.table_name, c.ordinal_position;",
+            "options": {}
+        },
+        "id": "postgres-query",
+        "name": "PostgreSQL Query",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.4,
+        "position": [460, 300],
+        "credentials": {
+            "postgres": {
+            "id": "your-postgres-credentials",
+            "name": "PostgreSQL Account"
+            }
+        }
+        },
+        {
+        "parameters": {
+            "jsCode": "// Анализируем каждую колонку и предлагаем содержимое\nconst columns = $input.all();\nconst analyzedColumns = [];\n\nfor (const column of columns) {\n  const tableName = column.table_name;\n  const columnName = column.column_name;\n  const dataType = column.data_type;\n  const isNullable = column.is_nullable;\n  \n  // Анализируем название колонки и тип данных\n  let suggestedContent = '';\n  let confidence = 0;\n  \n  // Анализ по названию колонки\n  const nameLower = columnName.toLowerCase();\n  \n  if (nameLower.includes('name') || nameLower.includes('title')) {\n    suggestedContent = 'Название или заголовок объекта';\n    confidence = 85;\n  } else if (nameLower.includes('email') || nameLower.includes('mail')) {\n    suggestedContent = 'Email адрес пользователя';\n    confidence = 90;\n  } else if (nameLower.includes('phone') || nameLower.includes('tel')) {\n    suggestedContent = 'Номер телефона';\n    confidence = 85;\n  } else if (nameLower.includes('address') || nameLower.includes('addr')) {\n    suggestedContent = 'Адрес';\n    confidence = 80;\n  } else if (nameLower.includes('date') || nameLower.includes('time')) {\n    suggestedContent = 'Дата или время';\n    confidence = 75;\n  } else if (nameLower.includes('price') || nameLower.includes('cost') || nameLower.includes('amount')) {\n    suggestedContent = 'Цена или сумма';\n    confidence = 80;\n  } else if (nameLower.includes('status') || nameLower.includes('state')) {\n    suggestedContent = 'Статус или состояние';\n    confidence = 70;\n  } else if (nameLower.includes('description') || nameLower.includes('desc')) {\n    suggestedContent = 'Описание';\n    confidence = 75;\n  } else if (nameLower.includes('url') || nameLower.includes('link')) {\n    suggestedContent = 'URL или ссылка';\n    confidence = 80;\n  } else if (nameLower.includes('code') || nameLower.includes('key')) {\n    suggestedContent = 'Код или ключ';\n    confidence = 70;\n  } else if (nameLower.includes('count') || nameLower.includes('number')) {\n    suggestedContent = 'Количество или номер';\n    confidence = 65;\n  } else if (nameLower.includes('active') || nameLower.includes('enabled')) {\n    suggestedContent = 'Флаг активности';\n    confidence = 75;\n  } else if (nameLower.includes('created') || nameLower.includes('added')) {\n    suggestedContent = 'Дата создания';\n    confidence = 70;\n  } else if (nameLower.includes('updated') || nameLower.includes('modified')) {\n    suggestedContent = 'Дата обновления';\n    confidence = 70;\n  } else {\n    // Анализ по типу данных\n    if (dataType.includes('varchar') || dataType.includes('text')) {\n      if (column.character_maximum_length && column.character_maximum_length <= 50) {\n        suggestedContent = 'Короткий текст (код, название)';\n        confidence = 60;\n      } else if (column.character_maximum_length && column.character_maximum_length <= 255) {\n        suggestedContent = 'Текст средней длины';\n        confidence = 55;\n      } else {\n        suggestedContent = 'Длинный текст (описание, комментарий)';\n        confidence = 65;\n      }\n    } else if (dataType.includes('int') || dataType.includes('bigint')) {\n      suggestedContent = 'Числовое значение';\n      confidence = 50;\n    } else if (dataType.includes('decimal') || dataType.includes('numeric')) {\n      suggestedContent = 'Денежное значение или точное число';\n      confidence = 70;\n    } else if (dataType.includes('date') || dataType.includes('timestamp')) {\n      suggestedContent = 'Дата и время';\n      confidence = 75;\n    } else if (dataType.includes('boolean')) {\n      suggestedContent = 'Логическое значение (да/нет)';\n      confidence = 80;\n    } else {\n      suggestedContent = 'Данные неизвестного типа';\n      confidence = 30;\n    }\n  }\n  \n  // Анализ по контексту таблицы\n  const tableNameLower = tableName.toLowerCase();\n  if (tableNameLower.includes('user') && !suggestedContent.includes('пользователь')) {\n    suggestedContent += ' (связано с пользователем)';\n    confidence += 5;\n  } else if (tableNameLower.includes('order') && !suggestedContent.includes('заказ')) {\n    suggestedContent += ' (связано с заказом)';\n    confidence += 5;\n  } else if (tableNameLower.includes('product') && !suggestedContent.includes('продукт')) {\n    suggestedContent += ' (связано с продуктом)';\n    confidence += 5;\n  }\n  \n  // Ограничиваем уверенность до 100%\n  confidence = Math.min(confidence, 100);\n  \n  analyzedColumns.push({\n    table_name: tableName,\n    column_name: columnName,\n    data_type: dataType,\n    is_nullable: isNullable,\n    suggested_content: suggestedContent,\n    confidence: confidence,\n    empty_description: column.empty_description\n  });\n}\n\nreturn analyzedColumns;"
+        },
+        "id": "analyze-columns",
+        "name": "Analyze Columns",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [680, 300]
+        },
+        {
+        "parameters": {
+            "respondWith": "json",
+            "responseBody": "={\n  \"columns\": {{ $json }}\n}",
+            "options": {}
+        },
+        "id": "response-column-analysis",
+        "name": "Response",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [900, 300]
+        }
+    ],
+    "connections": {
+        "Webhook Column Analysis": {
+        "main": [
+            [
+            {
+                "node": "PostgreSQL Query",
+                "type": "main",
+                "index": 0
+            }
+            ]
+        ]
+        },
+        "PostgreSQL Query": {
+        "main": [
+            [
+            {
+                "node": "Analyze Columns",
+                "type": "main",
+                "index": 0
+            }
+            ]
+        ]
+        },
+        "Analyze Columns": {
+        "main": [
+            [
+            {
+                "node": "Response",
+                "type": "main",
+                "index": 0
+            }
+            ]
+        ]
+        }
+    },
+    "pinData": {},
+    "settings": {},
+    "staticData": null,
+    "tags": [],
+    "triggerCount": 0,
+    "updatedAt": "2024-01-01T00:00:00.000Z",
+    "versionId": "1"
+    } 

@@ -1,0 +1,62 @@
+[
+  {
+    "location": "Шымкент",
+    "total_gyms": 358
+  },
+  {
+    "location": "Алматы",
+    "total_gyms": 349
+  },
+  {
+    "location": "Костанай",
+    "total_gyms": 343
+  },
+  {
+    "location": "Актау",
+    "total_gyms": 343
+  },
+  {
+    "location": "Актобе",
+    "total_gyms": 341
+  },
+  {
+    "location": "Караганда",
+    "total_gyms": 340
+  },
+  {
+    "location": "Кызылорда",
+    "total_gyms": 339
+  },
+  {
+    "location": "Тараз",
+    "total_gyms": 337
+  },
+  {
+    "location": "Усть-Каменогорск",
+    "total_gyms": 332
+  },
+  {
+    "location": "Астана",
+    "total_gyms": 330
+  },
+  {
+    "location": "Семей",
+    "total_gyms": 328
+  },
+  {
+    "location": "Павлодар",
+    "total_gyms": 326
+  },
+  {
+    "location": "Экибастуз",
+    "total_gyms": 320
+  },
+  {
+    "location": "Атырау",
+    "total_gyms": 318
+  },
+  {
+    "location": "Талдыкорган",
+    "total_gyms": 296
+  }
+]

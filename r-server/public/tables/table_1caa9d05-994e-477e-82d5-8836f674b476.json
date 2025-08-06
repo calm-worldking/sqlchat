@@ -1,0 +1,62 @@
+[
+  {
+    "city": "Астана",
+    "user_count": 316
+  },
+  {
+    "city": "Костанай",
+    "user_count": 341
+  },
+  {
+    "city": "Кызылорда",
+    "user_count": 370
+  },
+  {
+    "city": "Атырау",
+    "user_count": 330
+  },
+  {
+    "city": "Тараз",
+    "user_count": 342
+  },
+  {
+    "city": "Экибастуз",
+    "user_count": 277
+  },
+  {
+    "city": "Актобе",
+    "user_count": 362
+  },
+  {
+    "city": "Караганда",
+    "user_count": 359
+  },
+  {
+    "city": "Алматы",
+    "user_count": 346
+  },
+  {
+    "city": "Шымкент",
+    "user_count": 350
+  },
+  {
+    "city": "Усть-Каменогорск",
+    "user_count": 311
+  },
+  {
+    "city": "Семей",
+    "user_count": 324
+  },
+  {
+    "city": "Актау",
+    "user_count": 342
+  },
+  {
+    "city": "Талдыкорган",
+    "user_count": 295
+  },
+  {
+    "city": "Павлодар",
+    "user_count": 335
+  }
+]

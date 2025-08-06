@@ -2,10 +2,14 @@
 
 import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
-import { FiSend, FiUser, FiSettings, FiTrash2, FiBarChart2, FiCode } from 'react-icons/fi';
+import ReactMarkdown from 'react-markdown';
+import { FiSend, FiUser, FiSettings, FiTrash2, FiBarChart2, FiCode, FiDatabase, FiFileText, FiDownload, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { FaRobot } from 'react-icons/fa';
 import SettingsModal from './SettingsModal';
-import { getSessionId, getSettings, saveSettings } from '../utils/storage';
+import ColumnAnalysisModal from './ColumnAnalysisModal';
+import TemplatesModal from './TemplatesModal';
+import { getSessionId, getSettings, saveSettings, getColumnAnalysis, saveColumnAnalysis } from '../utils/storage';
+import { generateDocumentFromTemplate, getDefaultVariables, processTemplateVariables } from '../utils/templateProcessor';
 
 interface Message {
   id: string;
@@ -13,24 +17,35 @@ interface Message {
   sender: 'user' | 'bot';
   timestamp: Date;
   chartData?: any; // Optional chart data
-  responseType?: 'text' | 'chart' | 'image' | 'r_script'; // Type of response
+  responseType?: 'text' | 'chart' | 'image' | 'r_script' | 'file'; // Type of response
   imageUrl?: string; // URL to image if available
   rScript?: string; // R script for ggplot2 visualization
+  sqlQuery?: string; // SQL query that was executed
+  generatedFile?: string; // URL к сгенерированному файлу
+  fileFormat?: string; // Формат сгенерированного файла
 }
 
 interface N8nResponse {
-  output: {
-    Full_response_report: string;
-    chart_data?: any; // Data for charts if available
-    response_type?: 'text' | 'chart' | 'image' | 'r_script'; // Type of response
-    imageUrl?: string; // URL to image if response_type is 'image'
-    r_script?: string; // R script for ggplot2 visualization
-  };
+  response: string;
+  sql_query: string;
+  r_script?: string; // R script for ggplot2 visualization
+  generated_file?: string; // URL к сгенерированному файлу (PDF/DOC)
+  file_format?: string; // Формат сгенерированного файла
 }
 
 interface Settings {
   contextLength: number;
   // Add more settings here as needed
+}
+
+interface ColumnInfo {
+  table_name: string;
+  column_name: string;
+  data_type: string;
+  is_nullable: string;
+  suggested_content: string;
+  confidence: number;
+  empty_description: boolean;
 }
 
 interface ChatWidgetProps {
@@ -51,21 +66,39 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
   const [sessionId, setSessionId] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<Settings>({ contextLength: 5 });
+  const [isColumnAnalysisOpen, setIsColumnAnalysisOpen] = useState(false);
+  const [columnAnalysisData, setColumnAnalysisData] = useState<ColumnInfo[]>([]);
+  const [isColumnAnalysisLoading, setIsColumnAnalysisLoading] = useState(false);
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+  const [isColumnAnalysisLoadedFromStorage, setIsColumnAnalysisLoadedFromStorage] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [selectedFormat, setSelectedFormat] = useState<'txt' | 'doc' | 'pdf'>('txt');
+  const [collapsedSqlQueries, setCollapsedSqlQueries] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Replace with your n8n webhook URL
-  const N8N_WEBHOOK_URL = 'http://localhost:5678/webhook-test/chat';
+  const N8N_WEBHOOK_URL = 'http://localhost:5678/webhook/chat';
+  const COLUMN_ANALYSIS_WEBHOOK_URL = 'http://localhost:5678/webhook/column-analysis';
 
   // Initialize session ID and settings from storage
   useEffect(() => {
     const storedSessionId = getSessionId();
     const storedSettings = getSettings();
+    const storedColumnAnalysis = getColumnAnalysis();
     
     setSessionId(storedSessionId);
     setSettings(storedSettings);
+    setColumnAnalysisData(storedColumnAnalysis);
+    
+    // Устанавливаем флаг только если есть сохраненные данные
+    if (storedColumnAnalysis.length > 0) {
+      setIsColumnAnalysisLoadedFromStorage(true);
+    }
     
     console.log('Session ID:', storedSessionId);
     console.log('Settings loaded:', storedSettings);
+    console.log('Column analysis loaded:', storedColumnAnalysis.length, 'items');
   }, []);
 
   const scrollToBottom = () => {
@@ -76,29 +109,32 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
     scrollToBottom();
   }, [messages]);
 
-  const handleSendMessage = async () => {
-    if (!input.trim()) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      text: input,
-      sender: 'user',
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInput('');
-    setIsLoading(true);
-
+  const sendMessageToN8n = async (messageText: string, template?: any) => {
+    console.log("sendMessageToN8n called with selectedTemplate:", selectedTemplate, "and passed template:", template);
     try {
-      // Send message to n8n webhook with session ID and settings
-      const response = await axios.post(N8N_WEBHOOK_URL, {
-        message: input,
+      // Подготавливаем данные для отправки
+      const requestData: any = {
+        message: messageText,
         sessionId: sessionId,
         settings: {
           contextLength: settings.contextLength
         }
-      });
+      };
+
+      // Добавляем информацию о шаблоне, если он выбран
+      if (selectedTemplate) {
+        requestData.template = {
+          id: selectedTemplate.id,
+          name: selectedTemplate.name,
+          format: selectedTemplate.format,
+          fileUrl: selectedTemplate.fileUrl,
+          type: selectedTemplate.type,
+          content: selectedTemplate.content  // Добавляем содержимое шаблона
+        };
+      }
+
+      // Send message to n8n webhook with session ID and settings
+      const response = await axios.post(N8N_WEBHOOK_URL, requestData);
 
       // Выводим весь ответ для отладки
       console.log("Raw response data:", response.data);
@@ -118,56 +154,67 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
       let responseType = 'text';
       let imageUrl: string | undefined = undefined;
       let rScript: string | undefined = undefined;
+      let generatedFile: string | undefined = undefined;
+      let fileFormat: string | undefined = undefined;
       
       if (response.data && Array.isArray(response.data) && response.data.length > 0) {
         const n8nResponse = response.data[0] as N8nResponse;
-        console.log("Received response from n8n:", n8nResponse.output);
+        console.log("Received response from n8n:", n8nResponse);
         
-        // Проверяем все поля в ответе
-        const output = response.data[0].output;
-        if (output) {
-          console.log("All fields in output:", Object.keys(output));
-          
-          // Проверяем каждое поле на наличие r_script или подобного
-          for (const key of Object.keys(output)) {
-            if (key.toLowerCase().includes('script') || key.toLowerCase().includes('r_')) {
-              console.log(`Found potential script field: ${key}:`, output[key]);
-            }
-          }
+        // Используем новый формат ответа
+        if (n8nResponse.response) {
+          botResponseText = n8nResponse.response;
         }
         
-        // Проверяем наличие r_script напрямую в ответе
-        if (response.data[0].output && response.data[0].output.r_script) {
-          console.log("Found r_script directly in response:", response.data[0].output.r_script);
+        // Проверяем наличие r_script
+        if (n8nResponse.r_script) {
+          console.log("Found r_script in response:", n8nResponse.r_script);
+          rScript = n8nResponse.r_script;
+          responseType = 'r_script';
         }
         
-        if (n8nResponse.output) {
-          // Всегда берем текст ответа, если он есть
-          if (n8nResponse.output.Full_response_report) {
-            botResponseText = n8nResponse.output.Full_response_report;
+        // Выводим SQL запрос для отладки
+        if (n8nResponse.sql_query) {
+          console.log("SQL query:", n8nResponse.sql_query);
+        }
+        
+        // Проверяем наличие сгенерированного файла
+        if (n8nResponse.generated_file) {
+          console.log("Generated file:", n8nResponse.generated_file);
+          generatedFile = n8nResponse.generated_file;
+          fileFormat = n8nResponse.file_format;
+          responseType = 'file';
+        }
+        
+        // Если есть выбранный шаблон, генерируем документ
+        const templateToUse = template || selectedTemplate;
+        console.log("Checking for selected template:", selectedTemplate, "and passed template:", template);
+        if (templateToUse) {
+          console.log("Selected template found:", templateToUse);
+          try {
+            setIsGeneratingReport(true);
+            console.log("Generating document from template:", templateToUse);
+            const result = await generateDocumentFromTemplate(templateToUse, {
+              response: botResponseText,
+              sql_query: n8nResponse.sql_query
+            }, sessionId, selectedFormat);
+            
+            generatedFile = result.fileUrl;
+            fileFormat = result.format;
+            responseType = 'file';
+            
+            console.log("Document generated successfully:", result);
+            console.log("Updated responseType to 'file'");
+            console.log("Generated file URL:", generatedFile);
+            console.log("File format:", fileFormat);
+          } catch (error) {
+            console.error("Error generating document:", error);
+            // Не меняем responseType, оставляем как есть
+          } finally {
+            setIsGeneratingReport(false);
           }
-          
-          // Ищем поле r_script независимо от регистра
-          const output = n8nResponse.output as Record<string, any>;
-          for (const key of Object.keys(output)) {
-            if (key.toLowerCase() === 'r_script') {
-              console.log(`Found r_script field with key ${key}:`, output[key]);
-              rScript = output[key];
-              responseType = 'r_script';
-              break;
-            }
-          }
-          
-          // Если не нашли r_script, проверяем наличие URL изображения
-          if (!rScript && n8nResponse.output.imageUrl) {
-            imageUrl = n8nResponse.output.imageUrl;
-            responseType = 'image';
-          }
-          
-          // Если указан тип ответа в response_type, используем его
-          if (n8nResponse.output.response_type) {
-            responseType = n8nResponse.output.response_type;
-          }
+        } else {
+          console.log("No selected template found");
         }
       }
 
@@ -178,12 +225,19 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
         sender: 'bot',
         timestamp: new Date(),
         chartData: chartData,
-        responseType: responseType as 'text' | 'chart' | 'image' | 'r_script',
+        responseType: responseType as 'text' | 'chart' | 'image' | 'r_script' | 'file',
         imageUrl: imageUrl,
-        rScript: rScript
+        rScript: rScript,
+        sqlQuery: response.data && Array.isArray(response.data) && response.data.length > 0 ? response.data[0].sql_query : undefined,
+        generatedFile: generatedFile,
+        fileFormat: fileFormat
       };
 
-      console.log("Created bot message with r_script:", botMessage.rScript);
+      console.log("Created bot message:", {
+        responseType: botMessage.responseType,
+        generatedFile: botMessage.generatedFile,
+        fileFormat: botMessage.fileFormat
+      });
       
       setMessages((prev) => [...prev, botMessage]);
       
@@ -205,6 +259,10 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
           textOutput: botResponseText // Передаем текстовый вывод
         });
       }
+      
+      // Сбрасываем выбранный шаблон ПОСЛЕ всех операций
+      setSelectedTemplate(null);
+      
     } catch (error) {
       console.error('Error sending message to webhook:', error);
       
@@ -220,6 +278,65 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!input.trim()) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      text: input,
+      sender: 'user',
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+
+    await sendMessageToN8n(input, selectedTemplate);
+  };
+
+  const handleColumnAnalysis = async () => {
+    setIsColumnAnalysisLoading(true);
+    setIsColumnAnalysisLoadedFromStorage(false); // Сбрасываем флаг при новом анализе
+    
+    try {
+      const response = await axios.post(COLUMN_ANALYSIS_WEBHOOK_URL, {
+        sessionId: sessionId,
+        settings: {
+          contextLength: settings.contextLength
+        }
+      });
+
+      console.log("Column analysis response:", response.data);
+      
+      if (response.data && Array.isArray(response.data) && response.data.length > 0) {
+        const analysisData = response.data[0].output;
+        if (analysisData && analysisData.columns) {
+          setColumnAnalysisData(analysisData.columns);
+          saveColumnAnalysis(analysisData.columns); // Сохраняем данные анализа
+        } else {
+          setColumnAnalysisData([]);
+        }
+      } else {
+        setColumnAnalysisData([]);
+      }
+    } catch (error) {
+      console.error('Error analyzing columns:', error);
+      setColumnAnalysisData([]);
+    } finally {
+      setIsColumnAnalysisLoading(false);
+    }
+  };
+
+  const handleOpenColumnAnalysis = () => {
+    setIsColumnAnalysisOpen(true);
+    
+    // Если данных анализа нет, запускаем анализ автоматически
+    if (columnAnalysisData.length === 0) {
+      handleColumnAnalysis();
     }
   };
 
@@ -243,6 +360,60 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
     if (onChartDataReceived) {
       onChartDataReceived(null);
     }
+    
+    // Очистить данные анализа колонок
+    setColumnAnalysisData([]);
+    setIsColumnAnalysisLoadedFromStorage(false);
+    localStorage.removeItem('sql_chat_column_analysis');
+  };
+
+  const handleClearColumnAnalysis = () => {
+    setColumnAnalysisData([]);
+    setIsColumnAnalysisLoadedFromStorage(false);
+    localStorage.removeItem('sql_chat_column_analysis');
+  };
+
+  const handleTemplateSelect = (template: any, query?: string) => {
+    console.log("handleTemplateSelect called with:", { template, query });
+    // Сохраняем выбранный шаблон
+    setSelectedTemplate(template);
+    console.log("Selected template set:", template);
+    
+    if (query) {
+      console.log("Query provided, sending message:", query);
+      // Если передан запрос, отправляем его сразу
+      setInput(query);
+      // Автоматически отправляем сообщение после обновления input
+      setTimeout(() => {
+        const userMessage: Message = {
+          id: Date.now().toString(),
+          text: query,
+          sender: 'user',
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, userMessage]);
+        setInput('');
+        setIsLoading(true);
+        
+        // Вызываем логику отправки сообщения
+        sendMessageToN8n(query, template);
+      }, 100);
+    } else {
+      // Для PDF/DOC шаблонов обрабатываем как раньше
+      const variables = getDefaultVariables();
+      let processedContent = processTemplateVariables(template.content, variables);
+      
+      // Добавляем информацию о формате шаблона
+      if (template.format && template.format !== 'text') {
+        processedContent += `\n\nФормат шаблона: ${template.format.toUpperCase()}`;
+        if (template.fileUrl) {
+          processedContent += `\nФайл шаблона: ${template.fileUrl}`;
+        }
+      }
+      
+      // Вставляем обработанное содержимое шаблона в поле ввода
+      setInput(processedContent);
+    }
   };
 
   return (
@@ -252,6 +423,21 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
         <div className="p-4 border-b border-gray-200 bg-primary text-white flex justify-between items-center flex-shrink-0">
           <h2 className="text-xl font-semibold">SQL Chat Assistant</h2>
           <div className="flex space-x-2">
+            <button 
+              onClick={() => setIsTemplatesOpen(true)}
+              className="p-2 rounded-full hover:bg-primary-dark transition-colors"
+              title="Шаблоны отчётов"
+            >
+              <FiFileText size={20} />
+            </button>
+            <button 
+              onClick={handleOpenColumnAnalysis}
+              disabled={isColumnAnalysisLoading}
+              className="p-2 rounded-full hover:bg-primary-dark transition-colors disabled:opacity-50"
+              title="Анализ колонок без комментариев"
+            >
+              <FiDatabase size={20} />
+            </button>
             <button 
               onClick={handleClearChat}
               className="p-2 rounded-full hover:bg-primary-dark transition-colors"
@@ -322,8 +508,93 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
                           <FiCode className="mr-1" size={12} />
                         </span>
                       )}
+                      {message.responseType === 'file' && (
+                        <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full flex items-center">
+                          <FiDownload className="mr-1" size={12} />
+                          Файл
+                        </span>
+                      )}
                     </div>
-                    <p className="whitespace-pre-wrap">{message.text}</p>
+                    {message.sqlQuery && (
+                      <div className="mb-3">
+                        <div className="bg-blue-50 border border-blue-200 rounded-md">
+                          <div className="flex items-center justify-between p-3">
+                            <span className="text-xs font-medium text-blue-700 flex items-center">
+                              <FiDatabase className="mr-1" size={12} />
+                              SQL Query
+                            </span>
+                            <div className="flex items-center space-x-2">
+                              <button
+                                onClick={() => {
+                                  const newCollapsed = new Set(collapsedSqlQueries);
+                                  if (newCollapsed.has(message.id)) {
+                                    newCollapsed.delete(message.id);
+                                  } else {
+                                    newCollapsed.add(message.id);
+                                  }
+                                  setCollapsedSqlQueries(newCollapsed);
+                                }}
+                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
+                                title={collapsedSqlQueries.has(message.id) ? "Развернуть" : "Свернуть"}
+                              >
+                                {collapsedSqlQueries.has(message.id) ? (
+                                  <>
+                                    <FiChevronDown className="mr-1" size={12} />
+                                    Развернуть
+                                  </>
+                                ) : (
+                                  <>
+                                    <FiChevronUp className="mr-1" size={12} />
+                                    Свернуть
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(message.sqlQuery || '');
+                                }}
+                                className="text-xs text-blue-600 hover:text-blue-800"
+                                title="Копировать запрос"
+                              >
+                                Копировать
+                              </button>
+                            </div>
+                          </div>
+                          {!collapsedSqlQueries.has(message.id) && (
+                            <div className="px-3 pb-3">
+                              <pre className="text-xs text-blue-800 bg-white p-2 rounded border overflow-x-auto whitespace-pre-wrap">
+                                {message.sqlQuery}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <ReactMarkdown 
+                      components={{
+                        // Кастомные стили для элементов markdown
+                        h1: ({children}) => <h1 className="text-xl font-bold mb-2 text-gray-800">{children}</h1>,
+                        h2: ({children}) => <h2 className="text-lg font-semibold mb-2 text-gray-800">{children}</h2>,
+                        h3: ({children}) => <h3 className="text-base font-medium mb-2 text-gray-800">{children}</h3>,
+                        p: ({children}) => <p className="mb-2 text-gray-700">{children}</p>,
+                        ul: ({children}) => <ul className="list-disc list-inside mb-2 text-gray-700">{children}</ul>,
+                        ol: ({children}) => <ol className="list-decimal list-inside mb-2 text-gray-700">{children}</ol>,
+                        li: ({children}) => <li className="mb-1">{children}</li>,
+                        code: ({children}) => <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono">{children}</code>,
+                        pre: ({children}) => <pre className="bg-gray-100 p-2 rounded text-sm font-mono overflow-x-auto mb-2">{children}</pre>,
+                        blockquote: ({children}) => <blockquote className="border-l-4 border-gray-300 pl-4 italic text-gray-600 mb-2">{children}</blockquote>,
+                        strong: ({children}) => <strong className="font-semibold">{children}</strong>,
+                        em: ({children}) => <em className="italic">{children}</em>,
+                        table: ({children}) => <table className="w-full border-collapse border border-gray-300 mb-2">{children}</table>,
+                        thead: ({children}) => <thead className="bg-gray-50">{children}</thead>,
+                        tbody: ({children}) => <tbody>{children}</tbody>,
+                        tr: ({children}) => <tr className="border-b border-gray-300">{children}</tr>,
+                        th: ({children}) => <th className="border border-gray-300 px-2 py-1 text-left font-semibold">{children}</th>,
+                        td: ({children}) => <td className="border border-gray-300 px-2 py-1">{children}</td>,
+                      }}
+                    >
+                      {message.text}
+                    </ReactMarkdown>
                     {message.responseType === 'chart' && message.chartData && (
                       <button
                         onClick={() => onChartDataReceived && onChartDataReceived(message.chartData)}
@@ -337,10 +608,51 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
                         <img src={message.imageUrl} alt="Chart" className="max-w-full h-auto rounded-md" />
                       </div>
                     )}
-                    {message.responseType === 'r_script' && (
+                    {message.responseType === 'r_script' && message.rScript && (
                       <div className="mt-2">
-                        <div className="flex items-center text-sm text-gray-600">
-                          <div className="animate-pulse w-4 h-4 bg-purple-400 rounded-full mr-2"></div>
+                        <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-medium text-gray-700 flex items-center">
+                              <FiCode className="mr-1" size={12} />
+                              R Script
+                            </span>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(message.rScript || '');
+                              }}
+                              className="text-xs text-blue-600 hover:text-blue-800"
+                              title="Копировать скрипт"
+                            >
+                              Копировать
+                            </button>
+                          </div>
+                          <pre className="text-xs text-gray-800 bg-white p-2 rounded border overflow-x-auto whitespace-pre-wrap">
+                            {message.rScript}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+                    {message.responseType === 'file' && message.generatedFile && (
+                      <div className="mt-2">
+                        <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-medium text-green-700 flex items-center">
+                              <FiDownload className="mr-1" size={12} />
+                              Сгенерированный файл ({message.fileFormat?.toUpperCase()})
+                            </span>
+                            <button
+                              onClick={() => {
+                                window.open(message.generatedFile, '_blank');
+                              }}
+                              className="text-xs text-green-600 hover:text-green-800"
+                              title="Скачать файл"
+                            >
+                              Скачать
+                            </button>
+                          </div>
+                          <div className="text-xs text-green-800 bg-white p-2 rounded border">
+                            Файл успешно сгенерирован и готов к скачиванию
+                          </div>
                         </div>
                       </div>
                     )}
@@ -357,6 +669,11 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
                   Бот печатает...
                 </div>
               )}
+              {isGeneratingReport && (
+                <div className="text-center text-sm text-blue-500 mb-2">
+                  🤖 Генерирую отчёт с помощью ИИ...
+                </div>
+              )}
               <div className="flex items-center">
                 <input
                   type="text"
@@ -365,11 +682,11 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                   placeholder="Введите ваш вопрос..."
                   className="flex-grow border border-gray-300 rounded-l-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
-                  disabled={isLoading}
+                  disabled={isLoading || isGeneratingReport}
                 />
                 <button
                   onClick={handleSendMessage}
-                  disabled={isLoading || !input.trim()}
+                  disabled={isLoading || isGeneratingReport || !input.trim()}
                   className="bg-primary text-white px-4 py-2 rounded-r-lg hover:bg-blue-600 focus:outline-none disabled:opacity-50"
                 >
                   <FiSend />
@@ -394,6 +711,26 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
           </div>
         </div>
       </div>
+      
+      {/* Column Analysis Modal */}
+      <ColumnAnalysisModal
+        isOpen={isColumnAnalysisOpen}
+        onClose={() => setIsColumnAnalysisOpen(false)}
+        columns={columnAnalysisData}
+        isLoading={isColumnAnalysisLoading}
+        onRefresh={handleColumnAnalysis}
+        onClear={handleClearColumnAnalysis}
+        isLoadedFromStorage={isColumnAnalysisLoadedFromStorage}
+      />
+      
+      {/* Templates Modal */}
+      <TemplatesModal
+        isOpen={isTemplatesOpen}
+        onClose={() => setIsTemplatesOpen(false)}
+        onTemplateSelect={handleTemplateSelect}
+        selectedFormat={selectedFormat}
+        onFormatChange={setSelectedFormat}
+      />
     </div>
   );
 } 
