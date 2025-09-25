@@ -34,7 +34,7 @@ const openai = new OpenAI({
 export async function POST(request: NextRequest) {
   try {
     const body: ReportRequest = await request.json();
-    const { template, chatText, sqlQuery, sessionId, outputFormat = 'txt' } = body;
+    const { template, chatText, sqlQuery, sessionId: _sessionId, outputFormat = 'txt' } = body;
 
     console.log('Generating report with template:', template.name);
     console.log('Chat text length:', chatText.length);
@@ -106,131 +106,338 @@ export async function POST(request: NextRequest) {
 }
 
 async function generateReportWithAI(
-  template: any, 
-  chatText: string, 
-  sqlQuery?: string, 
-  databaseData: any[] = [], 
+  template: any,
+  chatText: string,
+  sqlQuery?: string,
+  databaseData: any[] = [],
   databaseColumns: string[] = []
 ): Promise<string> {
   try {
-    // Проверяем наличие API ключа
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY не настроен');
     }
 
-    // Формируем данные из базы для промпта
-    let databaseInfo = '';
-    if (databaseData.length > 0) {
-      databaseInfo = `
-Данные из базы данных:
-Количество строк: ${databaseData.length}
-Колонки: ${databaseColumns.join(', ')}
+    const now = new Date();
+    const dateVars = getNowVariables(now);
+    const databaseContext = buildDatabaseContext(databaseData, databaseColumns, 30);
 
-Первые 10 строк данных:
-${JSON.stringify(databaseData.slice(0, 10), null, 2)}
-`;
-    }
-
-    // Формируем улучшенный промпт для OpenAI
-    const systemPrompt = `Ты - эксперт по анализу данных и составлению профессиональных отчётов. 
-    Твоя задача - создать качественный отчёт на основе шаблона и данных из базы данных.
-
-    Шаблон отчёта:
-    ${template.content}
-
-    Инструкции:
-    1. Используй структуру шаблона как основу, но адаптируй под реальные данные из базы
-    2. Замени все переменные в {{ }} на реальные данные из базы данных
-    3. Если данных недостаточно, используй разумные предположения и укажи это
-    4. Сохрани профессиональный стиль и форматирование
-    5. Добавь анализ и выводы на основе данных из базы
-    6. Используй эмодзи для улучшения читаемости
-    7. Сделай отчёт информативным, структурированным и полезным
-    8. Если есть SQL запрос, проанализируй его и включи результаты
-    9. Добавь рекомендации и выводы в конце отчёта
-    10. Используй таблицы и списки для лучшей структуризации данных
-    11. Анализируй данные из базы и делай статистические выводы
-    12. Используй markdown форматирование для заголовков (# ## ###)
-
-    Важно: Отчёт должен быть готовым к использованию и профессиональным.`;
-
-    const userPrompt = `Данные из чата:
-${chatText}
-
-${sqlQuery ? `SQL запрос: ${sqlQuery}` : ''}
-
-${databaseInfo}
-
-Создай профессиональный отчёт на основе шаблона "${template.name}" используя предоставленные данные из базы данных. 
-Отчёт должен быть структурированным, информативным и готовым к использованию.`;
-
-    console.log('Sending request to OpenAI...');
-    console.log('Template type:', template.type);
-    console.log('Chat text length:', chatText.length);
-    console.log('Database rows:', databaseData.length);
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt
-        },
-        {
-          role: "user",
-          content: userPrompt
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 3000,
-      presence_penalty: 0.1,
-      frequency_penalty: 0.1,
+    // 1) План отчёта
+    const plannedSections = await planReportStructure({
+      templateName: template.name,
+      templateContent: template.content,
+      chatText,
+      sqlQuery,
+      databaseContext,
+      dateVars
     });
 
-    const generatedReport = completion.choices[0]?.message?.content || '';
-
-    if (!generatedReport) {
-      throw new Error('OpenAI не вернул содержимое отчёта');
+    // 2) Генерация и улучшение секций
+    const sectionContents: string[] = [];
+    for (const section of plannedSections) {
+      const generated = await generateSectionWithRefinement({
+        section,
+        templateContent: template.content,
+        chatText,
+        sqlQuery,
+        databaseContext,
+        dateVars,
+        maxRefineIterations: 2,
+      });
+      sectionContents.push(generated);
     }
 
-    console.log('OpenAI response received, length:', generatedReport.length);
+    // 3) Сборка отчёта
+    const assembledReport = await assembleFinalReport({
+      templateName: template.name,
+      templateContent: template.content,
+      sections: plannedSections,
+      sectionContents,
+      dateVars
+    });
 
-    // Возвращаем только сгенерированный отчёт без метаданных
-    return generatedReport;
+    // 4) Финальная проверка качества и замена переменных
+    const finalReport = await finalizeAndVerify({
+      reportDraft: assembledReport,
+      templateContent: template.content,
+      sqlQuery,
+      databaseContext,
+      dateVars
+    });
 
+    return finalReport;
   } catch (error) {
-    console.error('Error calling OpenAI:', error);
-    
-    // Fallback: используем простую логику если OpenAI недоступен
-    const now = new Date();
-    const reportDate = now.toLocaleDateString('ru-RU');
-    
-    let report = template.content;
-    
-    // Заменяем базовые переменные
-    report = report.replace(/\{\{ дата_создания \}\}/g, reportDate);
-    report = report.replace(/\{\{ период_анализа \}\}/g, `${now.getMonth() + 1}/${now.getFullYear()}`);
-    
-    // Добавляем данные из чата
-    report += `\n\n📋 Данные из чата:\n${chatText}`;
-    
-    if (sqlQuery) {
-      report += `\n\n🔍 SQL запрос:\n${sqlQuery}`;
-    }
-    
-    // Добавляем данные из базы
-    if (databaseData.length > 0) {
-      report += `\n\n📊 Данные из базы (${databaseData.length} строк):\n`;
-      report += `Колонки: ${databaseColumns.join(', ')}\n\n`;
-      report += JSON.stringify(databaseData.slice(0, 5), null, 2);
-    }
-    
-    // Добавляем информацию о генерации
-    report += `\n\n📊 Отчёт сгенерирован автоматически на основе шаблона "${template.name}"`;
-    report += `\n⏰ Время создания: ${now.toLocaleString('ru-RU')}`;
-    report += `\n⚠️ OpenAI недоступен, использован fallback режим`;
-    report += `\n💡 Для улучшения качества отчётов настройте OpenAI API ключ`;
-    
-    return report;
+    console.error('Error in agentic report generation:', error);
+    // Fallback — минимально полезная сборка
+    return buildFallbackReport(template, chatText, sqlQuery, databaseData, databaseColumns);
   }
-} 
+}
+
+// -------- Agentic loop helpers --------
+
+interface DateVars {
+  date: string;
+  time: string;
+  month: string;
+  year: string;
+  period: string;
+}
+
+function getNowVariables(now: Date): DateVars {
+  return {
+    date: now.toLocaleDateString('ru-RU'),
+    time: now.toLocaleTimeString('ru-RU'),
+    month: now.toLocaleDateString('ru-RU', { month: 'long' }),
+    year: String(now.getFullYear()),
+    period: `${now.getMonth() + 1}/${now.getFullYear()}`,
+  };
+}
+
+function buildDatabaseContext(data: any[], columns: string[], sampleRows: number): string {
+  if (!data || data.length === 0) return 'Данные из базы отсутствуют.';
+  const head = JSON.stringify(data.slice(0, sampleRows), null, 2);
+  return [
+    `Количество строк: ${data.length}`,
+    `Колонки: ${columns.join(', ')}`,
+    `Первые ${Math.min(sampleRows, data.length)} строк:`,
+    head,
+  ].join('\n');
+}
+
+interface PlannedSection {
+  id: string;
+  title: string;
+  purpose: string;
+  min_words?: number;
+}
+
+async function planReportStructure(args: {
+  templateName: string;
+  templateContent: string;
+  chatText: string;
+  sqlQuery?: string;
+  databaseContext: string;
+  dateVars: DateVars;
+}): Promise<PlannedSection[]> {
+  const { templateName, templateContent, chatText, sqlQuery, databaseContext, dateVars } = args;
+
+  const system = `Ты — главный редактор отчётов. Сначала составь план секций (5–10) с целями.
+Формат ответа — ТОЛЬКО валидный JSON без пояснений:
+{
+  "sections": [
+    {"id":"intro","title":"Введение","purpose":"...","min_words":120},
+    ...
+  ]
+}`;
+
+  const user = [
+    `Шаблон: ${templateName}`,
+    `Даты: дата=${dateVars.date}, время=${dateVars.time}, месяц=${dateVars.month}, год=${dateVars.year}, период=${dateVars.period}`,
+    `Шаблон-содержимое:\n${templateContent}`,
+    `Текст чата:\n${chatText}`,
+    sqlQuery ? `SQL:\n${sqlQuery}` : '',
+    `Данные БД:\n${databaseContext}`,
+    'Сопоставь план с логикой шаблона. '
+    + 'Укажи понятные id для секций (латиница, коротко), заголовки и цель каждой секции.',
+  ].join('\n\n');
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4.1-mini',
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+    temperature: 0.3,
+    max_tokens: 800,
+  });
+
+  const raw = completion.choices[0]?.message?.content || '{}';
+  try {
+    const parsed = JSON.parse(raw);
+    const sections: PlannedSection[] = Array.isArray(parsed.sections) ? parsed.sections : [];
+    if (sections.length === 0) throw new Error('empty sections');
+    return sections;
+  } catch {
+    // fallback план
+    return [
+      { id: 'intro', title: 'Введение', purpose: 'Контекст и цели отчёта', min_words: 120 },
+      { id: 'data_overview', title: 'Обзор данных', purpose: 'Описание источников и структуры данных', min_words: 200 },
+      { id: 'analysis', title: 'Аналитика', purpose: 'Ключевые наблюдения и статистика', min_words: 300 },
+      { id: 'insights', title: 'Выводы', purpose: 'Ключевые выводы и рекомендации', min_words: 180 },
+      { id: 'appendix', title: 'Приложение', purpose: 'Доп. таблицы/SQL/описания', min_words: 100 },
+    ];
+  }
+}
+
+async function generateSectionWithRefinement(args: {
+  section: PlannedSection;
+  templateContent: string;
+  chatText: string;
+  sqlQuery?: string;
+  databaseContext?: string;
+  dateVars: DateVars;
+  maxRefineIterations: number;
+}): Promise<string> {
+  const { section, templateContent, chatText, sqlQuery, databaseContext, dateVars, maxRefineIterations } = args;
+
+  // Черновик секции
+  let sectionDraft = await callOpenAI({
+    system: `Ты — автор секции отчёта. Пиши по-русски, без преамбул и без тройных кавычек. Используй markdown заголовок секции.`,
+    user: [
+      `Секция: ${section.title} (id=${section.id})`,
+      `Цель: ${section.purpose}`,
+      section.min_words ? `Минимальный объём: ${section.min_words} слов` : '',
+      `Даты: ${JSON.stringify(dateVars)}`,
+      `Шаблон (контекст):\n${templateContent}`,
+      `Текст чата:\n${chatText}`,
+      sqlQuery ? `SQL:\n${sqlQuery}` : '',
+      databaseContext ? `Данные БД:\n${databaseContext}` : '',
+      'Соблюдай логику шаблона. Замени переменные {{...}} реальными значениями.',
+    ].filter(Boolean).join('\n\n'),
+    max_tokens: 1200,
+    temperature: 0.5,
+  });
+
+  // Итеративная критика и улучшение
+  for (let i = 0; i < maxRefineIterations; i++) {
+    const critique = await callOpenAI({
+      system: 'Ты — критик разделов отчёта. Дай краткий список проблем по пунктам, если они есть. Если всё хорошо — верни "OK".',
+      user: [
+        `Секция (${section.title}):`,
+        sectionDraft,
+        'Проверь: соответствие цели, полноту, фактическую корректность относительно данных, стиль, отсутствие незаменённых {{...}}.',
+      ].join('\n\n'),
+      max_tokens: 400,
+      temperature: 0.2,
+    });
+
+    if (/^OK\s*$/i.test(critique.trim())) break;
+
+    sectionDraft = await callOpenAI({
+      system: 'Ты — редактор. Улучшай текст секции на основе критики. Итог — полный обновлённый текст секции без комментариев.',
+      user: [
+        'Текущая версия секции:',
+        sectionDraft,
+        'Критика:',
+        critique,
+      ].join('\n\n'),
+      max_tokens: 1200,
+      temperature: 0.4,
+    });
+  }
+
+  return sectionDraft;
+}
+
+async function assembleFinalReport(args: {
+  templateName: string;
+  templateContent: string;
+  sections: PlannedSection[];
+  sectionContents: string[];
+  dateVars: DateVars;
+}): Promise<string> {
+  const { templateName, templateContent, sections, sectionContents, dateVars } = args;
+  const joined = sectionContents.join('\n\n');
+  const assembled = await callOpenAI({
+    system: 'Ты — сборщик отчёта. Собери цельный документ, сохраняя логику шаблона и порядок секций. Не добавляй преамбул и не оборачивай в тройные кавычки.',
+    user: [
+      `Шаблон: ${templateName}`,
+      `Даты: ${JSON.stringify(dateVars)}`,
+      `Шаблон-содержимое:\n${templateContent}`,
+      'Секции по порядку:',
+      ...sections.map((s, idx) => `${idx + 1}. ${s.title} (id=${s.id})`),
+      'Тексты секций (по порядку):',
+      joined,
+    ].join('\n\n'),
+    max_tokens: 3500,
+    temperature: 0.5,
+  });
+  return assembled;
+}
+
+async function finalizeAndVerify(args: {
+  reportDraft: string;
+  templateContent: string;
+  sqlQuery?: string;
+  databaseContext?: string;
+  dateVars: DateVars;
+}): Promise<string> {
+  const { reportDraft, templateContent, sqlQuery, databaseContext, dateVars } = args;
+
+  let verified = await callOpenAI({
+    system: 'Ты — верификатор. Проверь документ: стиль, единообразие, отсутствие незаменённых переменных {{...}}. Верни исправленный текст без комментариев.',
+    user: [
+      `Даты: ${JSON.stringify(dateVars)}`,
+      `Шаблон (контекст):\n${templateContent}`,
+      sqlQuery ? `SQL:\n${sqlQuery}` : '',
+      databaseContext ? `Данные БД:\n${databaseContext}` : '',
+      'Документ:',
+      reportDraft,
+    ].filter(Boolean).join('\n\n'),
+    max_tokens: 2000,
+    temperature: 0.3,
+  });
+
+  // Быстрая техническая замена базовых переменных дат, если вдруг остались
+  verified = applyDateVariables(verified, dateVars);
+
+  // Удаляем возможные ``` обёртки
+  verified = verified.replace(/^```[a-zA-Z]*\n?|```$/g, '');
+
+  return verified;
+}
+
+function applyDateVariables(text: string, vars: DateVars): string {
+  return text
+    .replace(/\{\{\s*дата_создания\s*\}\}/g, vars.date)
+    .replace(/\{\{\s*время_создания\s*\}\}/g, vars.time)
+    .replace(/\{\{\s*дата_время_создания\s*\}\}/g, `${vars.date} ${vars.time}`)
+    .replace(/\{\{\s*период_анализа\s*\}\}/g, vars.period)
+    .replace(/\{\{\s*месяц\s*\}\}/g, vars.month)
+    .replace(/\{\{\s*год\s*\}\}/g, vars.year);
+}
+
+async function callOpenAI(args: {
+  system: string;
+  user: string;
+  max_tokens: number;
+  temperature: number;
+}): Promise<string> {
+  const { system, user, max_tokens, temperature } = args;
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4.1-mini',
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+    max_tokens,
+    temperature,
+    presence_penalty: 0,
+    frequency_penalty: 0,
+  });
+  return completion.choices[0]?.message?.content?.trim() || '';
+}
+
+function buildFallbackReport(
+  template: any,
+  chatText: string,
+  sqlQuery: string | undefined,
+  databaseData: any[],
+  databaseColumns: string[]
+): string {
+  const now = new Date();
+  const vars = getNowVariables(now);
+  let report = template.content;
+  report = applyDateVariables(report, vars);
+  report += `\n\n📋 Данные из чата:\n${chatText}`;
+  if (sqlQuery) {
+    report += `\n\n🔍 SQL запрос:\n${sqlQuery}`;
+  }
+  if (databaseData.length > 0) {
+    report += `\n\n📊 Данные из базы (${databaseData.length} строк):\n`;
+    report += `Колонки: ${databaseColumns.join(', ')}\n\n`;
+    report += JSON.stringify(databaseData.slice(0, 5), null, 2);
+  }
+  report += `\n\n⏰ Время создания: ${vars.date} ${vars.time}`;
+  report += `\n⚠️ OpenAI недоступен, использован fallback режим`;
+  return report;
+}

@@ -56,7 +56,7 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: 'Привет! Я чат-бот SQL Chat. Чем могу помочь?',
+      text: 'Привет! Я чат-бот. Чем могу помочь?',
       sender: 'bot',
       timestamp: new Date(),
     },
@@ -74,7 +74,8 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
   const [isColumnAnalysisLoadedFromStorage, setIsColumnAnalysisLoadedFromStorage] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<'txt' | 'doc' | 'pdf'>('txt');
-  const [collapsedSqlQueries, setCollapsedSqlQueries] = useState<Set<string>>(new Set());
+  // По умолчанию SQL-блоки скрыты. Показываем содержимое только для id, попавших в этот набор
+  const [expandedSqlQueries, setExpandedSqlQueries] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Replace with your n8n webhook URL
@@ -350,7 +351,7 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
     setMessages([
       {
         id: Date.now().toString(),
-        text: 'Чат очищен. Чем могу помочь?',
+        text: 'Чат очищен. Задавайте вопросы!',
         sender: 'bot',
         timestamp: new Date(),
       },
@@ -421,7 +422,7 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
       <div className="flex flex-col h-full max-h-screen">
         {/* Chat header */}
         <div className="p-4 border-b border-gray-200 bg-primary text-white flex justify-between items-center flex-shrink-0">
-          <h2 className="text-xl font-semibold">SQL Chat Assistant</h2>
+          <h2 className="text-xl font-semibold">Chat Assistant</h2>
           <div className="flex space-x-2">
             <button 
               onClick={() => setIsTemplatesOpen(true)}
@@ -526,29 +527,30 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
                             <div className="flex items-center space-x-2">
                               <button
                                 onClick={() => {
-                                  const newCollapsed = new Set(collapsedSqlQueries);
-                                  if (newCollapsed.has(message.id)) {
-                                    newCollapsed.delete(message.id);
+                                  const newExpanded = new Set(expandedSqlQueries);
+                                  if (newExpanded.has(message.id)) {
+                                    newExpanded.delete(message.id);
                                   } else {
-                                    newCollapsed.add(message.id);
+                                    newExpanded.add(message.id);
                                   }
-                                  setCollapsedSqlQueries(newCollapsed);
+                                  setExpandedSqlQueries(newExpanded);
                                 }}
                                 className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
-                                title={collapsedSqlQueries.has(message.id) ? "Развернуть" : "Свернуть"}
+                                title={expandedSqlQueries.has(message.id) ? "Свернуть" : "Развернуть"}
                               >
-                                {collapsedSqlQueries.has(message.id) ? (
-                                  <>
-                                    <FiChevronDown className="mr-1" size={12} />
-                                    Развернуть
-                                  </>
-                                ) : (
+                                {expandedSqlQueries.has(message.id) ? (
                                   <>
                                     <FiChevronUp className="mr-1" size={12} />
                                     Свернуть
                                   </>
+                                ) : (
+                                  <>
+                                    <FiChevronDown className="mr-1" size={12} />
+                                    Развернуть
+                                  </>
                                 )}
                               </button>
+                              
                               <button
                                 onClick={() => {
                                   navigator.clipboard.writeText(message.sqlQuery || '');
@@ -560,7 +562,7 @@ export default function ChatWidget({ onChartDataReceived }: ChatWidgetProps) {
                               </button>
                             </div>
                           </div>
-                          {!collapsedSqlQueries.has(message.id) && (
+                          {expandedSqlQueries.has(message.id) && (
                             <div className="px-3 pb-3">
                               <pre className="text-xs text-blue-800 bg-white p-2 rounded border overflow-x-auto whitespace-pre-wrap">
                                 {message.sqlQuery}

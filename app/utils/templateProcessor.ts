@@ -17,9 +17,10 @@ export interface ReportData {
 
 // Функция для получения переменных по умолчанию
 export function getDefaultVariables(): Record<string, string> {
+  const now = new Date();
   return {
-    '{дата_создания}': new Date().toLocaleDateString('ru-RU'),
-    '{период_анализа}': `${new Date().getMonth() + 1}/${new Date().getFullYear()}`,
+    '{дата_создания}': now.toLocaleDateString('ru-RU'),
+    '{период_анализа}': `${now.getMonth() + 1}/${now.getFullYear()}`,
     '{город}': 'Алматы',
     '{общее_количество_залов}': '15',
     '{название_зала}': 'Фитнес-центр "Здоровье"',

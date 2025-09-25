@@ -36,9 +36,64 @@ const ensureDirectories = () => {
   fs.ensureDirSync(path.join(__dirname, 'public/tables'));
 };
 
+// Флаг для отслеживания инициализации пакетов
+let packagesInitialized = false;
+
+// Функция для инициализации пакетов (выполняется только один раз)
+const initializePackages = async () => {
+  if (packagesInitialized) return;
+  
+  console.log('Инициализация R пакетов...');
+  const rLibPath = path.join(__dirname, 'r-lib');
+  fs.ensureDirSync(rLibPath);
+  
+  const initScript = `
+# Настройка локальной пользовательской библиотеки
+rlib <- normalizePath("${rLibPath.replace(/\\/g, '/')}", winslash = "/", mustWork = FALSE)
+if (!dir.exists(rlib)) dir.create(rlib, recursive = TRUE)
+.libPaths(c(rlib, .libPaths()))
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+
+# Проверяем и устанавливаем только отсутствующие пакеты
+required_packages <- c("ggplot2", "dplyr", "jsonlite", "knitr", "rmarkdown", "xfun")
+
+for (pkg in required_packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    tryCatch({
+      install.packages(pkg, lib = rlib, quiet = TRUE)
+      cat("Установлен пакет:", pkg, "\\n")
+    }, error = function(e) {
+      cat("Ошибка установки пакета", pkg, ":", e$message, "\\n")
+    })
+  } else {
+    cat("Пакет", pkg, "уже установлен\\n")
+  }
+}
+
+cat("Инициализация пакетов завершена\\n")
+`;
+
+  const initScriptPath = path.join(__dirname, 'init_packages.R');
+  fs.writeFileSync(initScriptPath, initScript);
+  
+  return new Promise((resolve, reject) => {
+    exec(`Rscript "${initScriptPath}"`, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+      if (error) {
+        console.warn('Предупреждение при инициализации пакетов:', error.message);
+        console.log('stdout:', stdout);
+        console.log('stderr:', stderr);
+      } else {
+        console.log('Пакеты инициализированы:', stdout);
+      }
+      packagesInitialized = true;
+      resolve();
+    });
+  });
+};
+
 // Эндпоинт для проверки статуса сервера
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'R Script Server is running' });
+  res.json({ status: 'ok', message: 'R Script Server is running', packagesInitialized });
 });
 
 // Эндпоинт для выполнения R-скрипта
@@ -54,26 +109,15 @@ app.post('/execute-r', async (req, res) => {
       return res.status(400).json({ error: 'No script provided' });
     }
     
+    // Инициализируем пакеты при первом запросе
+    if (!packagesInitialized) {
+      await initializePackages();
+    }
+    
     // Текстовый вывод для включения в PDF
     const textForPdf = text || '';
     
     console.log(`[${requestId}] Выполнение R-скрипта ${textForPdf ? 'с текстом' : 'без текста'} для PDF`);
-    if (textForPdf) {
-      console.log(`[${requestId}] Длина текста: ${textForPdf.length}`);
-      console.log(`[${requestId}] Начало текста: ${textForPdf.substring(0, 50)}...`);
-      
-      // Проверяем текст на наличие специальных символов
-      const hasSpecialChars = /[\\$%&_#{}]/g.test(textForPdf);
-      if (hasSpecialChars) {
-        console.log(`[${requestId}] Текст содержит специальные символы, которые могут вызвать проблемы в LaTeX`);
-      }
-      
-      // Сохраняем текст в отдельный файл для отладки
-      const textFileName = `text_${requestId}.txt`;
-      const textFilePath = path.join(__dirname, 'logs', textFileName);
-      fs.writeFileSync(textFilePath, textForPdf);
-      console.log(`[${requestId}] Текст сохранен в файл для отладки: ${textFilePath}`);
-    }
     
     // Генерируем уникальные имена файлов
     const scriptId = uuidv4();
@@ -97,121 +141,32 @@ app.post('/execute-r', async (req, res) => {
     const relativePdfPath = path.join('tables', pdfFileName);
     const relativeCsvPath = path.join('tables', csvFileName);
     
-    console.log(`[${requestId}] Сгенерированы пути к файлам:`);
-    console.log(`[${requestId}] - Скрипт: ${scriptPath}`);
-    console.log(`[${requestId}] - PNG: ${outputPath}`);
-    console.log(`[${requestId}] - HTML: ${htmlPath}`);
-    console.log(`[${requestId}] - JSON: ${jsonPath}`);
-    console.log(`[${requestId}] - PDF: ${pdfPath}`);
-    console.log(`[${requestId}] - CSV: ${csvPath}`);
+    console.log(`[${requestId}] Сгенерированы пути к файлам`);
     
     const utilsPath = path.join(__dirname, 'utils.R').replace(/\\/g, '/');
+    const rLibPath = path.join(__dirname, 'r-lib');
     
-    // Записываем скрипт в файл
-    fs.writeFileSync(scriptPath, script);
-    console.log(`[${requestId}] Скрипт записан в файл: ${scriptPath}`);
-    
-    // Создаем полный скрипт с необходимыми библиотеками и обработкой результатов
+    // Создаем оптимизированный скрипт без установки пакетов
     const fullScript = `
-# Загружаем необходимые библиотеки
-if (!requireNamespace("ggplot2", quietly = TRUE)) {
-  install.packages("ggplot2", repos="https://cloud.r-project.org")
-}
-library(ggplot2)
+# Настройка локальной пользовательской библиотеки
+rlib <- normalizePath("${rLibPath.replace(/\\/g, '/')}", winslash = "/", mustWork = FALSE)
+.libPaths(c(rlib, .libPaths()))
 
-# Пробуем загрузить gt, если нужно
-tryCatch({
-  if (!requireNamespace("gt", quietly = TRUE)) {
-    install.packages("gt", repos="https://cloud.r-project.org")
-  }
-  library(gt)
-}, error = function(e) {
-  message("Пакет gt не установлен, но это не критично, если он не используется в скрипте")
+# Загружаем библиотеки (без установки)
+suppressPackageStartupMessages({
+  tryCatch({ library(ggplot2, lib.loc = rlib) }, error = function(e) { message("ggplot2 не загружен: ", e$message) })
+  tryCatch({ library(dplyr, lib.loc = rlib) }, error = function(e) { message("dplyr не загружен: ", e$message) })
+  tryCatch({ library(jsonlite, lib.loc = rlib) }, error = function(e) { message("jsonlite не загружен: ", e$message) })
+  tryCatch({ library(knitr, lib.loc = rlib) }, error = function(e) { message("knitr не загружен: ", e$message) })
+  tryCatch({ library(rmarkdown, lib.loc = rlib) }, error = function(e) { message("rmarkdown не загружен: ", e$message) })
+  tryCatch({ library(xfun, lib.loc = rlib) }, error = function(e) { message("xfun не загружен: ", e$message) })
 })
 
-# Пробуем загрузить jsonlite, если нужно
-tryCatch({
-  if (!requireNamespace("jsonlite", quietly = TRUE)) {
-    install.packages("jsonlite", repos="https://cloud.r-project.org")
-  }
-  library(jsonlite)
-}, error = function(e) {
-  message("Пакет jsonlite не установлен, но это не критично, если он не используется в скрипте")
-})
-
-# Пробуем загрузить knitr и rmarkdown, если нужно
-tryCatch({
-  if (!requireNamespace("knitr", quietly = TRUE)) {
-    install.packages("knitr", repos="https://cloud.r-project.org")
-  }
-  if (!requireNamespace("rmarkdown", quietly = TRUE)) {
-    install.packages("rmarkdown", repos="https://cloud.r-project.org")
-  }
-  library(knitr)
-  library(rmarkdown)
-}, error = function(e) {
-  message("Пакеты knitr или rmarkdown не установлены, но будет использован альтернативный метод")
-})
-
-# Пробуем загрузить pdftools, если нужно
-tryCatch({
-  if (!requireNamespace("pdftools", quietly = TRUE)) {
-    install.packages("pdftools", repos="https://cloud.r-project.org")
-  }
-  library(pdftools)
-}, error = function(e) {
-  message("Пакет pdftools не установлен, но это не критично для основной функциональности")
-})
-
-# Пробуем загрузить extrafont для поддержки шрифтов
-tryCatch({
-  if (!requireNamespace("extrafont", quietly = TRUE)) {
-    install.packages("extrafont", repos="https://cloud.r-project.org")
-  }
-  library(extrafont)
-  # Импортируем шрифты, если они еще не импортированы
-  if (length(extrafont::fonts()) == 0) {
-    extrafont::font_import(prompt = FALSE)
-  }
-  extrafont::loadfonts(quiet = TRUE)
-}, error = function(e) {
-  message("Пакет extrafont не установлен или возникла ошибка при работе с шрифтами, но это не критично: ", e$message)
-})
-
-# Проверяем и обновляем пакет xfun
-tryCatch({
-  if (!requireNamespace("xfun", quietly = TRUE)) {
-    install.packages("xfun", repos="https://cloud.r-project.org")
-  } else {
-    xfun_version <- as.character(packageVersion("xfun"))
-    if (compareVersion(xfun_version, "0.52") < 0) {
-      message("Обновление пакета xfun до версии 0.52 или выше")
-      install.packages("xfun", repos="https://cloud.r-project.org")
-    }
-  }
-}, error = function(e) {
-  message("Ошибка при проверке/обновлении пакета xfun: ", e$message)
-})
-
-# Пробуем загрузить kableExtra для улучшенного форматирования таблиц
-tryCatch({
-  if (!requireNamespace("kableExtra", quietly = TRUE)) {
-    install.packages("kableExtra", repos="https://cloud.r-project.org")
-  }
-  library(kableExtra)
-}, error = function(e) {
-  message("Пакет kableExtra не установлен, но это не критично: ", e$message)
-})
-
-library(dplyr)
 # Загружаем функции для сохранения результатов
-source("${utilsPath}")
-
-# Проверяем и обновляем все необходимые пакеты
 tryCatch({
-  check_and_update_packages()
+  source("${utilsPath}")
 }, error = function(e) {
-  message("Ошибка при проверке/обновлении пакетов: ", e$message)
+  message("Ошибка загрузки utils.R: ", e$message)
 })
 
 # Выполняем пользовательский скрипт
@@ -258,41 +213,49 @@ if (!is.null(last_obj)) {
 if (!is.null(last_obj)) {
   if (is_table) {
     # Для таблиц экспортируем HTML, JSON, PDF и CSV
-    table_result <- export_table(
-      last_obj, 
-      html_file = "${htmlPath.replace(/\\/g, '/')}", 
-      json_file = "${jsonPath.replace(/\\/g, '/')}",
-      pdf_file = "${pdfPath.replace(/\\/g, '/')}",
-      csv_file = "${csvPath.replace(/\\/g, '/')}",
-      text = ${textForPdf ? `"${textForPdf.replace(/"/g, '\\"')}"` : 'NULL'},
-      title = "Результат анализа данных"
-    )
-    # Формируем относительные пути для вывода
-    cat("TABLE_RESULT:", jsonlite::toJSON(list(
-      type = "table",
-      html_path = "${relativeHtmlPath.replace(/\\/g, '/')}",
-      json_path = "${relativeJsonPath.replace(/\\/g, '/')}",
-      pdf_path = "${relativePdfPath.replace(/\\/g, '/')}",
-      csv_path = "${relativeCsvPath.replace(/\\/g, '/')}"
-    )))
+    tryCatch({
+      table_result <- export_table(
+        last_obj, 
+        html_file = "${htmlPath.replace(/\\/g, '/')}", 
+        json_file = "${jsonPath.replace(/\\/g, '/')}",
+        pdf_file = "${pdfPath.replace(/\\/g, '/')}",
+        csv_file = "${csvPath.replace(/\\/g, '/')}",
+        text = ${textForPdf ? `"${textForPdf.replace(/"/g, '\\"')}"` : 'NULL'},
+        title = "Результат анализа данных"
+      )
+      # Формируем относительные пути для вывода
+      cat("TABLE_RESULT:", jsonlite::toJSON(list(
+        type = "table",
+        html_path = "${relativeHtmlPath.replace(/\\/g, '/')}",
+        json_path = "${relativeJsonPath.replace(/\\/g, '/')}",
+        pdf_path = "${relativePdfPath.replace(/\\/g, '/')}",
+        csv_path = "${relativeCsvPath.replace(/\\/g, '/')}"
+      )))
+    }, error = function(e) {
+      message("Ошибка экспорта таблицы: ", e$message)
+    })
   } else {
     # Для графиков используем save_visual_output и экспортируем в PDF
-    save_visual_output(last_obj, "${outputPath.replace(/\\/g, '/')}", width = 10, height = 6, dpi = 300)
-    # Также сохраняем в PDF с текстом
-    export_plot_to_pdf(
-      last_obj, 
-      "${pdfPath.replace(/\\/g, '/')}", 
-      text = ${textForPdf ? `"${textForPdf.replace(/"/g, '\\"')}"` : 'NULL'}, 
-      title = "Результат визуализации данных",
-      width = 10, 
-      height = 6
-    )
-    # Формируем относительные пути для вывода
-    cat("VISUAL_RESULT:", jsonlite::toJSON(list(
-      type = "image",
-      image_path = "${relativeOutputPath.replace(/\\/g, '/')}",
-      pdf_path = "${relativePdfPath.replace(/\\/g, '/')}"
-    )))
+    tryCatch({
+      save_visual_output(last_obj, "${outputPath.replace(/\\/g, '/')}", width = 10, height = 6, dpi = 300)
+      # Также сохраняем в PDF с текстом
+      export_plot_to_pdf(
+        last_obj, 
+        "${pdfPath.replace(/\\/g, '/')}", 
+        text = ${textForPdf ? `"${textForPdf.replace(/"/g, '\\"')}"` : 'NULL'}, 
+        title = "Результат визуализации данных",
+        width = 10, 
+        height = 6
+      )
+      # Формируем относительные пути для вывода
+      cat("VISUAL_RESULT:", jsonlite::toJSON(list(
+        type = "image",
+        image_path = "${relativeOutputPath.replace(/\\/g, '/')}",
+        pdf_path = "${relativePdfPath.replace(/\\/g, '/')}"
+      )))
+    }, error = function(e) {
+      message("Ошибка экспорта графика: ", e$message)
+    })
   }
 } else {
   stop("Не удалось найти объект для сохранения. Убедитесь, что скрипт создает ggplot (p), gt таблицу (gt_table) или data.frame (df)")
@@ -306,12 +269,24 @@ if (!is.null(last_obj)) {
     // Выполняем R-скрипт
     console.log(`[${requestId}] Начало выполнения R-скрипта`);
     
-    exec(`Rscript "${scriptPath}"`, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+    const childEnv = { 
+      ...process.env,
+      R_LIBS_USER: rLibPath,
+      R_LIBS: rLibPath
+    };
+    
+    exec(`Rscript "${scriptPath}"`, { maxBuffer: 1024 * 1024 * 10, env: childEnv }, (error, stdout, stderr) => {
       console.log(`[${requestId}] R-скрипт выполнен`);
       
       if (error) {
         console.error(`[${requestId}] Ошибка выполнения R-скрипта:`, error);
-        return res.status(500).json({ error: 'R script execution error', details: error.message, stderr });
+        return res.status(500).json({ 
+          requestId,
+          error: 'R script execution error', 
+          details: error.message, 
+          stdout,
+          stderr 
+        });
       }
       
       if (stderr) {
@@ -428,6 +403,7 @@ if (!is.null(last_obj)) {
         } else {
           console.error(`[${requestId}] Файлы результатов не созданы`);
           return res.status(500).json({ 
+            requestId,
             error: 'Output files not created',
             stdout: stdout,
             stderr: stderr
@@ -435,34 +411,9 @@ if (!is.null(last_obj)) {
         }
       }
       
-      // Для отладки выводим все пути
-      console.log(`[${requestId}] Пути к файлам:`);
-      console.log(`[${requestId}] - HTML: ${htmlPath} -> ${relativeHtmlPath}`);
-      console.log(`[${requestId}] - JSON: ${jsonPath} -> ${relativeJsonPath}`);
-      console.log(`[${requestId}] - PDF: ${pdfPath} -> ${relativePdfPath}`);
-      console.log(`[${requestId}] - CSV: ${csvPath} -> ${relativeCsvPath}`);
-      console.log(`[${requestId}] - PNG: ${outputPath} -> ${relativeOutputPath}`);
-      
-      // Проверяем существование файлов
-      console.log(`[${requestId}] Существование файлов:`);
-      console.log(`[${requestId}] - HTML: ${fs.existsSync(htmlPath)}`);
-      console.log(`[${requestId}] - JSON: ${fs.existsSync(jsonPath)}`);
-      console.log(`[${requestId}] - PDF: ${fs.existsSync(pdfPath)}`);
-      console.log(`[${requestId}] - CSV: ${fs.existsSync(csvPath)}`);
-      console.log(`[${requestId}] - PNG: ${fs.existsSync(outputPath)}`);
-      
-      // Проверяем размеры файлов
-      if (fs.existsSync(pdfPath)) {
-        const pdfStats = fs.statSync(pdfPath);
-        console.log(`[${requestId}] Размер PDF файла: ${pdfStats.size} байт`);
-        
-        if (pdfStats.size === 0) {
-          console.error(`[${requestId}] ОШИБКА: PDF файл имеет нулевой размер!`);
-        }
-      }
-      
       console.log(`[${requestId}] Отправка ответа клиенту`);
       res.json({ 
+        requestId,
         success: true,
         result: result,
         stdout: stdout
@@ -470,7 +421,7 @@ if (!is.null(last_obj)) {
     });
   } catch (err) {
     console.error(`[${requestId}] Ошибка сервера:`, err);
-    res.status(500).json({ error: 'Server error', details: err.message });
+    res.status(500).json({ requestId, error: 'Server error', details: err.message });
   }
 });
 

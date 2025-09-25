@@ -16,6 +16,9 @@ interface VisualizationData {
 export default function Home() {
   // URL вашего сервера для выполнения R-скриптов
   const R_EXECUTION_SERVER = 'http://localhost:3001/execute-r';
+    const MAX_R_TIMEOUT_MS = 120000; // 120 секунд на выполнение R-скрипта
+    const MAX_R_RETRIES = 2; // количество повторных попыток при таймауте/временных ошибках
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   // Интерфейс для результата таблицы
   interface TableResult {
@@ -82,13 +85,36 @@ export default function Home() {
       // Получаем текстовый вывод, если он есть
       const textOutput = visualData?.textOutput || '';
       
-      // Отправляем R-скрипт на сервер для выполнения с таймаутом
-      const response = await axios.post(R_EXECUTION_SERVER, {
-        script: script,
-        text: textOutput
-      }, {
-        timeout: 30000 // 30 секунд таймаут
-      });
+      // Отправляем R-скрипт на сервер с увеличенным таймаутом и ретраями
+      let response: any;
+      let lastError: any = null;
+      for (let attempt = 0; attempt <= MAX_R_RETRIES; attempt++) {
+        try {
+          response = await axios.post(R_EXECUTION_SERVER, {
+            script: script,
+            text: textOutput
+          }, {
+            timeout: MAX_R_TIMEOUT_MS
+          });
+          break; // успех
+        } catch (err: any) {
+          lastError = err;
+          const status = err?.response?.status;
+          const isTimeout = err?.code === 'ECONNABORTED';
+          const isRetryable = isTimeout || status === 502 || status === 503 || status === 504;
+          if (attempt < MAX_R_RETRIES && isRetryable) {
+            const backoffMs = 1500 * (attempt + 1);
+            console.warn(`R-server request failed (attempt ${attempt + 1}). Retrying in ${backoffMs} ms...`);
+            await sleep(backoffMs);
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      if (!response) {
+        throw lastError || new Error('Не удалось получить ответ от сервера R');
+      }
       
       console.log("Server response:", response.data);
       
@@ -150,7 +176,9 @@ export default function Home() {
         // Ошибка от сервера
         const status = err.response.status;
         if (status === 500) {
-          errorMessage = 'Внутренняя ошибка сервера R. Проверьте логи сервера.';
+          const reqId = err.response.data?.requestId ? ` (ID: ${err.response.data.requestId})` : '';
+          const tailStderr = (err.response.data?.stderr || '').toString().split('\n').slice(-5).join('\n');
+          errorMessage = `Внутренняя ошибка сервера R${reqId}. Последние строки лога:\n${tailStderr || '—'}`;
         } else if (status === 404) {
           errorMessage = 'Эндпоинт R-сервера не найден. Проверьте конфигурацию.';
         } else {
@@ -472,19 +500,39 @@ export default function Home() {
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-full">
-                <h1 className="text-4xl font-bold mb-6 text-primary">SQL Chat</h1>
-                <div className="mb-8">
-                  <div className="w-96 h-96 mx-auto relative">
-                    <img 
-                      src="/sql-spider-logo.png" 
-                      alt="SQL Chat Logo" 
-                      className="w-full h-full object-contain drop-shadow-2xl"
-                    />
+                <h1 className="text-4xl font-bold mb-8 text-primary">Chat Assistant</h1>
+                <div className="mb-8 flex items-center justify-center">
+                  <div className="relative w-48 h-48">
+                    {/* Внешний круг с градиентом */}
+                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-500 via-purple-500 to-indigo-600 animate-pulse" style={{animationDuration: '3s'}} />
+                    
+                    {/* Средний круг */}
+                    <div className="absolute inset-2 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 animate-pulse" style={{animationDuration: '2.5s'}} />
+                    
+                    {/* Внутренний круг */}
+                    <div className="absolute inset-4 rounded-full bg-gradient-to-br from-blue-300 to-purple-400 animate-pulse" style={{animationDuration: '2s'}} />
+                    
+                    {/* Центральный круг с надписью SQL */}
+                    <div className="absolute inset-8 rounded-full bg-gradient-to-br from-white to-blue-50 shadow-lg flex items-center justify-center">
+                      <span className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+                        SQL
+                      </span>
+                    </div>
+                    
+                    {/* Дополнительные декоративные элементы */}
+                    <div className="absolute -top-2 -right-2 w-4 h-4 bg-blue-400 rounded-full animate-bounce" style={{animationDelay: '0.5s'}} />
+                    <div className="absolute -bottom-2 -left-2 w-3 h-3 bg-purple-400 rounded-full animate-bounce" style={{animationDelay: '1s'}} />
+                    <div className="absolute -top-1 -left-1 w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{animationDelay: '1.5s'}} />
                   </div>
                 </div>
-                <p className="text-xl mb-4 text-center">
-                  Добро пожаловать в SQL Chat! Задавайте вопросы в чате справа.
+                <p className="text-xl mb-4 text-center text-gray-600 max-w-md">
+                  Добро пожаловать! Задавайте вопросы в чате справа и получайте подробные ответы.
                 </p>
+                <div className="flex space-x-2 mt-4">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.3s'}} />
+                  <div className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse" style={{animationDelay: '0.6s'}} />
+                </div>
               </div>
             )}
           </div>
